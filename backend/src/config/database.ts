@@ -1,34 +1,21 @@
 import { PrismaClient } from '@prisma/client';
-import logger from '../utils/logger';
 
-// Create a single instance of Prisma Client
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' 
-    ? ['query', 'error', 'warn'] 
-    : ['error'],
-});
-
-// Handle connection errors
-prisma.$connect()
-  .then(() => {
-    logger.info('Database connected successfully');
-  })
-  .catch((error) => {
-    logger.error('Database connection failed', error);
-    process.exit(1);
+const prismaClientSingleton = () => {
+  return new PrismaClient({
+    log: process.env.NODE_ENV === 'development' 
+      ? ['query', 'info', 'warn', 'error']
+      : ['error'],
   });
+};
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  await prisma.$disconnect();
-  logger.info('Database connection closed');
-  process.exit(0);
-});
+declare global {
+  var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
+}
 
-process.on('SIGTERM', async () => {
-  await prisma.$disconnect();
-  logger.info('Database connection closed');
-  process.exit(0);
-});
+const prisma = globalThis.prisma ?? prismaClientSingleton();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.prisma = prisma;
+}
 
 export default prisma;

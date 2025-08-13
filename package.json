@@ -1,0 +1,42 @@
+{
+  "name": "crm-augu",
+  "version": "1.0.0",
+  "description": "Customer-Centric CRM Platform for HRD Business",
+  "private": true,
+  "scripts": {
+    "doc:daily": "node scripts/doc-generator.js daily",
+    "doc:weekly": "node scripts/doc-generator.js weekly",
+    "doc:code-review": "node scripts/doc-generator.js code-review",
+    "doc:api": "node scripts/doc-generator.js api",
+    "doc:sprint": "node scripts/doc-generator.js sprint",
+    "backend:dev": "cd backend && npm run dev",
+    "backend:build": "cd backend && npm run build",
+    "backend:test": "cd backend && npm test",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
+    "frontend:test": "cd frontend && npm test",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/crm-augu.git"
+  },
+  "keywords": [
+    "crm",
+    "hrd",
+    "business",
+    "management",
+    "typescript",
+    "react",
+    "node"
+  ],
+  "author": "Your Organization",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

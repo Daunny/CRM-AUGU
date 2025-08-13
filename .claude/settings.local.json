@@ -22,7 +22,9 @@
       "Bash(touch:*)",
       "Bash(npx prisma:*)",
       "Bash(rm:*)",
-      "Bash(npm cache clean:*)"
+      "Bash(npm cache clean:*)",
+      "Bash(npm run test:unit:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

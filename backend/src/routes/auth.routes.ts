@@ -1,47 +1,24 @@
 import { Router } from 'express';
 import { authController } from '../controllers/auth.controller';
-import { authenticate, validateRefreshToken } from '../middleware/auth.middleware';
-import { validate, schemas } from '../utils/validator';
-import { requireRole, UserRole } from '../middleware/rbac.middleware';
+import { authenticate } from '../middlewares/auth';
+import { validate } from '../middlewares/validation';
+import {
+  registerSchema,
+  loginSchema,
+  refreshTokenSchema,
+  changePasswordSchema,
+} from '../validators/auth.validator';
 
 const router = Router();
 
-// Public routes (no authentication required)
-router.post('/register', 
-  validate(schemas.register),
-  authController.register
-);
+// Public routes
+router.post('/register', validate(registerSchema), authController.register);
+router.post('/login', validate(loginSchema), authController.login);
+router.post('/refresh', validate(refreshTokenSchema), authController.refreshToken);
 
-router.post('/login',
-  validate(schemas.login),
-  authController.login
-);
-
-router.post('/refresh',
-  validateRefreshToken,
-  authController.refreshToken
-);
-
-// Protected routes (authentication required)
-router.use(authenticate); // Apply authentication to all routes below
-
-router.post('/logout', authController.logout);
-
-router.get('/me', authController.getCurrentUser);
-
-router.put('/change-password', authController.changePassword);
-
-router.post('/validate', authController.validateToken);
-
-// Admin routes
-router.get('/sessions/:userId?',
-  requireRole(UserRole.ADMIN),
-  authController.getUserSessions
-);
-
-router.delete('/sessions/:sessionId',
-  requireRole(UserRole.ADMIN),
-  authController.revokeSession
-);
+// Protected routes
+router.post('/logout', authenticate, authController.logout);
+router.post('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
+router.get('/profile', authenticate, authController.getProfile);
 
 export default router;

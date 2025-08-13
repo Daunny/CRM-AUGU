@@ -7,221 +7,503 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User and Authentication
+// ============================================
+// User & Authentication
+// ============================================
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
   password         String
-  firstName        String
-  lastName         String
-  role             UserRole  @default(SALES_REP)
-  department       String?
+  firstName        String    @map("first_name")
+  lastName         String    @map("last_name")
   phone            String?
-  isActive         Boolean   @default(true)
-  lastLoginAt      DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  position         String?
+  role             UserRole  @default(OPERATOR)
+  userTier         UserTier  @default(OPERATOR) @map("user_tier")
+  isActive         Boolean   @default(true) @map("is_active")
+  lastLoginAt      DateTime? @map("last_login_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdBy        String?   @map("created_by")
+  updatedBy        String?   @map("updated_by")
+  deletedAt        DateTime? @map("deleted_at")
+  deletedBy        String?   @map("deleted_by")
+  
+  // Team Relations
+  departmentId     String?   @map("department_id")
+  teamId           String?   @map("team_id")
   
   // Relations
-  managedCustomers Customer[] @relation("AccountManager")
-  createdCustomers Customer[] @relation("CreatedBy")
+  department       Department?      @relation(fields: [departmentId], references: [id])
+  team             Team?            @relation(fields: [teamId], references: [id])
+  sessions         Session[]
+  managedCompanies Company[]        @relation("AccountManager")
+  createdCompanies Company[]        @relation("CreatedBy")
+  leads            Lead[]           @relation("AssignedTo")
+  leadAssignments  LeadAssignment[] @relation("AssignedTo")
+  opportunities    Opportunity[]    @relation("AccountManager")
   activities       Activity[]
   tasks            Task[]
   notifications    Notification[]
-  sessions         Session[]
-  projects         ProjectMember[]
+  projectsManaged  Project[]        @relation("ProjectManager")
+  projectsCoordinated Project[]     @relation("Coordinator")
+  projectsOperated Project[]        @relation("Operator")
+  projectMembers   ProjectMember[]
+  trainingSessions TrainingSession[] @relation("Coordinator")
+  meetings         Meeting[]        @relation("Organizer")
+  meetingParticipants MeetingParticipant[] @relation("InternalParticipant")
+  meetingActionItems MeetingActionItem[] @relation("Assignee")
+  kpiTargets       KpiTarget[]      @relation("CreatedBy")
   
   @@index([email])
+  @@index([departmentId])
+  @@index([teamId])
   @@map("users")
 }
 
 model Session {
   id           String   @id @default(uuid())
-  userId       String
+  userId       String   @map("user_id")
   token        String   @unique
-  refreshToken String   @unique
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
+  refreshToken String   @unique @map("refresh_token")
+  expiresAt    DateTime @map("expires_at")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
   
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
 }
 
-// Customer Management
-model Customer {
+// ============================================
+// Customer Management (3-Tier Structure)
+// ============================================
+
+// Level 1: Company
+model Company {
   id                String         @id @default(uuid())
-  companyName       String
-  industry          String?
-  size              CompanySize?
+  code              String         @unique
+  name              String
+  businessNumber    String?        @unique @map("business_number")
+  representative    String?
+  industryId        String?        @map("industry_id")
+  companySize       CompanySize?   @map("company_size")
+  annualRevenue     Float?         @map("annual_revenue")
+  employeeCount     Int?           @map("employee_count")
+  fiscalYearEnd     String?        @map("fiscal_year_end")
   website           String?
-  accountManagerId  String?
+  description       String?
+  tier              CustomerTier   @default(BRONZE)
   status            CustomerStatus @default(PROSPECT)
-  lifecycleStage    String         @default("lead")
-  score             Int            @default(0)
-  createdById       String
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  creditLimit       Float?         @map("credit_limit")
+  paymentTerms      Int?           @default(30) @map("payment_terms")
+  tags              String[]
+  customFields      Json?          @map("custom_fields")
+  accountManagerId  String?        @map("account_manager_id")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  createdBy         String?        @map("created_by")
+  updatedBy         String?        @map("updated_by")
+  deletedAt         DateTime?      @map("deleted_at")
+  deletedBy         String?        @map("deleted_by")
   
   // Relations
-  accountManager User?       @relation("AccountManager", fields: [accountManagerId], references: [id])
-  createdBy      User        @relation("CreatedBy", fields: [createdById], references: [id])
-  contacts       Contact[]
-  opportunities  Opportunity[]
-  activities     Activity[]
-  tasks          Task[]
-  documents      Document[]
-  projects       Project[]
+  industry         Industry?     @relation(fields: [industryId], references: [id])
+  accountManager   User?         @relation("AccountManager", fields: [accountManagerId], references: [id])
+  createdByUser    User?         @relation("CreatedBy", fields: [createdBy], references: [id])
+  branches         Branch[]
+  opportunities    Opportunity[]
+  projects         Project[]
+  activities       Activity[]
+  meetings         Meeting[]
+  
+  @@index([code])
+  @@index([businessNumber])
+  @@index([accountManagerId])
+  @@map("companies")
 }
 
+// Level 2: Branch
+model Branch {
+  id                String    @id @default(uuid())
+  companyId         String    @map("company_id")
+  code              String    @unique
+  name              String
+  branchType        BranchType? @map("branch_type")
+  addressStreet     String?   @map("address_street")
+  addressCity       String?   @map("address_city")
+  addressState      String?   @map("address_state")
+  addressPostal     String?   @map("address_postal")
+  addressCountry    String?   @default("대한민국") @map("address_country")
+  phone             String?
+  fax               String?
+  email             String?
+  managerName       String?   @map("manager_name")
+  employeeCount     Int?      @map("employee_count")
+  isPrimary         Boolean   @default(false) @map("is_primary")
+  isBillingAddress  Boolean   @default(false) @map("is_billing_address")
+  isShippingAddress Boolean   @default(false) @map("is_shipping_address")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdBy         String?   @map("created_by")
+  updatedBy         String?   @map("updated_by")
+  deletedAt         DateTime? @map("deleted_at")
+  deletedBy         String?   @map("deleted_by")
+  
+  // Relations
+  company          Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contacts         Contact[]
+  opportunities    Opportunity[]
+  projects         Project[]
+  meetings         Meeting[]
+  
+  @@index([companyId])
+  @@index([code])
+  @@map("branches")
+}
+
+// Level 3: Contact
 model Contact {
-  id         String   @id @default(uuid())
-  customerId String
-  firstName  String
-  lastName   String
-  email      String
-  phone      String?
-  mobile     String?
-  position   String?
-  department String?
-  isPrimary  Boolean  @default(false)
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                     String    @id @default(uuid())
+  branchId               String    @map("branch_id")
+  firstName              String    @map("first_name")
+  lastName               String    @map("last_name")
+  email                  String?
+  phone                  String?
+  mobile                 String?
+  position               String?
+  department             String?
+  roleType               ContactRole? @map("role_type")
+  isPrimary              Boolean   @default(false) @map("is_primary")
+  preferredContactMethod String?   @map("preferred_contact_method")
+  birthday               DateTime? 
+  notes                  String?
+  linkedinUrl            String?   @map("linkedin_url")
+  lastContactedAt        DateTime? @map("last_contacted_at")
+  isActive               Boolean   @default(true) @map("is_active")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  createdBy              String?   @map("created_by")
+  updatedBy              String?   @map("updated_by")
+  deletedAt              DateTime? @map("deleted_at")
+  deletedBy              String?   @map("deleted_by")
   
   // Relations
-  customer     Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  activities   Activity[]
-  opportunities Opportunity[]
+  branch                 Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  opportunities          Opportunity[]
+  activities             Activity[]
+  meetingParticipants    MeetingParticipant[] @relation("ExternalParticipant")
+  
+  @@index([branchId])
+  @@index([email])
+  @@map("contacts")
 }
 
-// Sales Pipeline
-model Opportunity {
-  id           String           @id @default(uuid())
-  customerId   String
-  contactId    String?
-  title        String
-  description  String?
-  stage        OpportunityStage @default(QUALIFYING)
-  amount       Float?
-  probability  Int              @default(0)
-  expectedCloseDate DateTime?
-  actualCloseDate   DateTime?
-  status       OpportunityStatus @default(OPEN)
-  lostReason   String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+model Industry {
+  id          String     @id @default(uuid())
+  code        String     @unique
+  name        String
+  parentId    String?    @map("parent_id")
+  description String?
+  createdAt   DateTime   @default(now()) @map("created_at")
   
   // Relations
-  customer   Customer   @relation(fields: [customerId], references: [id])
-  contact    Contact?   @relation(fields: [contactId], references: [id])
-  activities Activity[]
-  tasks      Task[]
-  products   OpportunityProduct[]
+  parent      Industry?  @relation("IndustryHierarchy", fields: [parentId], references: [id])
+  children    Industry[] @relation("IndustryHierarchy")
+  companies   Company[]
+  
+  @@map("industries")
+}
+
+// ============================================
+// Lead & Opportunity Management
+// ============================================
+
+model Lead {
+  id                      String       @id @default(uuid())
+  code                    String       @unique
+  companyName             String       @map("company_name")
+  contactName             String?      @map("contact_name")
+  email                   String?
+  phone                   String?
+  source                  LeadSource?
+  sourceDetail            String?      @map("source_detail")
+  status                  LeadStatus   @default(NEW)
+  score                   Int          @default(0)
+  bantBudget              Boolean      @default(false) @map("bant_budget")
+  bantAuthority           Boolean      @default(false) @map("bant_authority")
+  bantNeed                Boolean      @default(false) @map("bant_need")
+  bantTimeline            Boolean      @default(false) @map("bant_timeline")
+  bantScore               Int          @default(0) @map("bant_score")
+  assignedToId            String?      @map("assigned_to_id")
+  assignedTeamId          String?      @map("assigned_team_id")
+  convertedAt             DateTime?    @map("converted_at")
+  convertedToCompanyId    String?      @map("converted_to_company_id")
+  convertedToOpportunityId String?     @map("converted_to_opportunity_id")
+  notes                   String?
+  createdAt               DateTime     @default(now()) @map("created_at")
+  updatedAt               DateTime     @updatedAt @map("updated_at")
+  createdBy               String?      @map("created_by")
+  updatedBy               String?      @map("updated_by")
+  deletedAt               DateTime?    @map("deleted_at")
+  deletedBy               String?      @map("deleted_by")
+  
+  // Relations
+  assignedTo              User?        @relation("AssignedTo", fields: [assignedToId], references: [id])
+  assignedTeam            Team?        @relation(fields: [assignedTeamId], references: [id])
+  assignments             LeadAssignment[]
+  
+  @@index([code])
+  @@index([status])
+  @@index([assignedToId])
+  @@map("leads")
+}
+
+model LeadAssignment {
+  id               String    @id @default(uuid())
+  leadId           String    @map("lead_id")
+  assignedFromId   String?   @map("assigned_from_id")
+  assignedToId     String?   @map("assigned_to_id")
+  assignedTeamId   String?   @map("assigned_team_id")
+  assignmentReason String?   @map("assignment_reason")
+  status           AssignmentStatus @default(PENDING)
+  approvedBy       String?   @map("approved_by")
+  approvedAt       DateTime? @map("approved_at")
+  rejectionReason  String?   @map("rejection_reason")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  lead             Lead      @relation(fields: [leadId], references: [id])
+  assignedTo       User?     @relation("AssignedTo", fields: [assignedToId], references: [id])
+  assignedTeam     Team?     @relation(fields: [assignedTeamId], references: [id])
+  
+  @@map("lead_assignments")
+}
+
+model Opportunity {
+  id                String           @id @default(uuid())
+  code              String           @unique
+  title             String
+  description       String?
+  companyId         String           @map("company_id")
+  branchId          String?          @map("branch_id")
+  contactId         String?          @map("contact_id")
+  type              OpportunityType?
+  stage             OpportunityStage @default(QUALIFYING)
+  probability       Int              @default(10)
+  amount            Float?
+  expectedAmount    Float?           @map("expected_amount")
+  currency          String           @default("KRW")
+  expectedCloseDate DateTime?        @map("expected_close_date")
+  actualCloseDate   DateTime?        @map("actual_close_date")
+  closeReason       String?          @map("close_reason")
+  competitorInfo    Json?            @map("competitor_info")
+  source            LeadSource?
+  campaignId        String?          @map("campaign_id")
+  accountManagerId  String           @map("account_manager_id")
+  salesTeamId       String?          @map("sales_team_id")
+  nextAction        String?          @map("next_action")
+  nextActionDate    DateTime?        @map("next_action_date")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  createdBy         String?          @map("created_by")
+  updatedBy         String?          @map("updated_by")
+  deletedAt         DateTime?        @map("deleted_at")
+  deletedBy         String?          @map("deleted_by")
+  
+  // Relations
+  company           Company          @relation(fields: [companyId], references: [id])
+  branch            Branch?          @relation(fields: [branchId], references: [id])
+  contact           Contact?         @relation(fields: [contactId], references: [id])
+  accountManager    User             @relation("AccountManager", fields: [accountManagerId], references: [id])
+  salesTeam         Team?            @relation(fields: [salesTeamId], references: [id])
+  stageHistory      OpportunityStageHistory[]
+  activities        Activity[]
+  tasks             Task[]
+  products          OpportunityProduct[]
+  meetings          Meeting[]
+  
+  @@index([code])
+  @@index([stage])
+  @@index([companyId])
+  @@map("opportunities")
+}
+
+model OpportunityStageHistory {
+  id            String      @id @default(uuid())
+  opportunityId String      @map("opportunity_id")
+  fromStage     String?     @map("from_stage")
+  toStage       String      @map("to_stage")
+  changedBy     String      @map("changed_by")
+  reason        String?
+  durationDays  Int?        @map("duration_days")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  
+  @@map("opportunity_stage_history")
 }
 
 model OpportunityProduct {
   id            String      @id @default(uuid())
-  opportunityId String
-  productId     String
+  opportunityId String      @map("opportunity_id")
+  productId     String      @map("product_id")
   quantity      Int
-  unitPrice     Float
+  unitPrice     Float       @map("unit_price")
   discount      Float       @default(0)
-  totalPrice    Float
+  totalPrice    Float       @map("total_price")
   
-  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-  product     Product     @relation(fields: [productId], references: [id])
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  product       Product     @relation(fields: [productId], references: [id])
+  
+  @@map("opportunity_products")
 }
 
-model Product {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  category    String?
-  unitPrice   Float
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  opportunities OpportunityProduct[]
-}
+// ============================================
+// Project Management (HRD Specialized)
+// ============================================
 
-// Activity Tracking
-model Activity {
-  id           String       @id @default(uuid())
-  type         ActivityType
-  subject      String
-  description  String?
-  customerId   String?
-  contactId    String?
-  opportunityId String?
-  userId       String
-  startTime    DateTime
-  endTime      DateTime?
-  outcome      String?
-  nextAction   String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  
-  // Relations
-  customer    Customer?    @relation(fields: [customerId], references: [id])
-  contact     Contact?     @relation(fields: [contactId], references: [id])
-  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
-  user        User         @relation(fields: [userId], references: [id])
-}
-
-// Task Management
-model Task {
-  id           String     @id @default(uuid())
-  title        String
-  description  String?
-  priority     Priority   @default(MEDIUM)
-  status       TaskStatus @default(PENDING)
-  dueDate      DateTime?
-  customerId   String?
-  opportunityId String?
-  assignedToId String
-  completedAt  DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  
-  // Relations
-  customer    Customer?    @relation(fields: [customerId], references: [id])
-  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
-  assignedTo  User         @relation(fields: [assignedToId], references: [id])
-}
-
-// Project Management
 model Project {
-  id            String    @id @default(uuid())
-  code          String    @unique
-  name          String
-  customerId    String
-  description   String?
-  startDate     DateTime
-  endDate       DateTime
-  budget        Float?
-  status        ProjectStatus @default(PLANNING)
-  priority      Priority  @default(MEDIUM)
-  progress      Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               String        @id @default(uuid())
+  code             String        @unique
+  name             String
+  description      String?
+  type             ProjectType?
+  companyId        String        @map("company_id")
+  branchId         String?       @map("branch_id")
+  opportunityId    String?       @map("opportunity_id")
+  contractId       String?       @map("contract_id")
+  status           ProjectStatus @default(PLANNING)
+  phase            ProjectPhase?
+  health           ProjectHealth?
+  priority         Priority      @default(MEDIUM)
+  startDate        DateTime?     @map("start_date")
+  endDate          DateTime?     @map("end_date")
+  actualStartDate  DateTime?     @map("actual_start_date")
+  actualEndDate    DateTime?     @map("actual_end_date")
+  budget           Float?
+  actualCost       Float?        @map("actual_cost")
+  revenue          Float?
+  margin           Float?
+  marginPercent    Float?        @map("margin_percent")
+  progress         Int           @default(0)
+  projectManagerId String?       @map("project_manager_id")
+  coordinatorId    String?       @map("coordinator_id")
+  operatorId       String?       @map("operator_id")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  createdBy        String?       @map("created_by")
+  updatedBy        String?       @map("updated_by")
+  deletedAt        DateTime?     @map("deleted_at")
+  deletedBy        String?       @map("deleted_by")
   
   // Relations
-  customer      Customer  @relation(fields: [customerId], references: [id])
-  members       ProjectMember[]
-  milestones    Milestone[]
+  company          Company       @relation(fields: [companyId], references: [id])
+  branch           Branch?       @relation(fields: [branchId], references: [id])
+  projectManager   User?         @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  coordinator      User?         @relation("Coordinator", fields: [coordinatorId], references: [id])
+  operator         User?         @relation("Operator", fields: [operatorId], references: [id])
+  members          ProjectMember[]
+  milestones       Milestone[]
+  trainingSessions TrainingSession[]
+  meetings         Meeting[]
+  tasks            Task[]
   
   @@index([code])
-  @@index([customerId])
+  @@index([companyId])
+  @@index([status])
   @@map("projects")
+}
+
+model TrainingSession {
+  id                String    @id @default(uuid())
+  projectId         String    @map("project_id")
+  sessionNumber     Int       @map("session_number")
+  name              String?
+  startDate         DateTime  @map("start_date")
+  endDate           DateTime  @map("end_date")
+  status            SessionStatus @default(SCHEDULED)
+  coordinatorId     String?   @map("coordinator_id")
+  location          String?
+  maxParticipants   Int?      @map("max_participants")
+  enrolledCount     Int       @default(0) @map("enrolled_count")
+  attendedCount     Int       @default(0) @map("attended_count")
+  satisfactionScore Float?    @map("satisfaction_score")
+  notes             String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  coordinator       User?     @relation("Coordinator", fields: [coordinatorId], references: [id])
+  classes           TrainingClass[]
+  
+  @@unique([projectId, sessionNumber])
+  @@map("training_sessions")
+}
+
+model TrainingClass {
+  id              String    @id @default(uuid())
+  sessionId       String    @map("session_id")
+  classNumber     Int       @map("class_number")
+  name            String?
+  date            DateTime
+  startTime       DateTime  @map("start_time")
+  endTime         DateTime  @map("end_time")
+  instructorId    String?   @map("instructor_id")
+  room            String?
+  topic           String?
+  materialsUrl    String?   @map("materials_url")
+  maxParticipants Int?      @map("max_participants")
+  enrolledCount   Int       @default(0) @map("enrolled_count")
+  attendedCount   Int       @default(0) @map("attended_count")
+  status          ClassStatus @default(SCHEDULED)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  session         TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  instructor      Instructor?     @relation(fields: [instructorId], references: [id])
+  
+  @@unique([sessionId, classNumber])
+  @@map("training_classes")
+}
+
+model Instructor {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  firstName     String    @map("first_name")
+  lastName      String    @map("last_name")
+  email         String    @unique
+  phone         String?
+  specialties   String[]
+  rating        Float?
+  hourlyRate    Float?    @map("hourly_rate")
+  bio           String?
+  certifications String[]
+  isInternal    Boolean   @default(false) @map("is_internal")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  classes       TrainingClass[]
+  
+  @@map("instructors")
 }
 
 model ProjectMember {
   id          String   @id @default(uuid())
-  projectId   String
-  userId      String
+  projectId   String   @map("project_id")
+  userId      String   @map("user_id")
   role        String
   allocation  Int      @default(100)
-  joinedAt    DateTime @default(now())
+  startDate   DateTime? @map("start_date")
+  endDate     DateTime? @map("end_date")
+  isActive    Boolean  @default(true) @map("is_active")
+  joinedAt    DateTime @default(now()) @map("joined_at")
   
   // Relations
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -232,56 +514,429 @@ model ProjectMember {
 }
 
 model Milestone {
-  id          String   @id @default(uuid())
-  projectId   String
+  id          String    @id @default(uuid())
+  projectId   String    @map("project_id")
   name        String
   description String?
-  dueDate     DateTime
-  completedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  dueDate     DateTime  @map("due_date")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
   
   // Relations
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   
   @@map("milestones")
 }
 
-// Document Management
+// ============================================
+// Meeting Management
+// ============================================
+
+model Meeting {
+  id              String       @id @default(uuid())
+  code            String       @unique
+  title           String
+  description     String?
+  target          MeetingTarget
+  type            MeetingType
+  companyId       String?      @map("company_id")
+  branchId        String?      @map("branch_id")
+  opportunityId   String?      @map("opportunity_id")
+  projectId       String?      @map("project_id")
+  date            DateTime
+  startTime       DateTime     @map("start_time")
+  endTime         DateTime     @map("end_time")
+  duration        Int?
+  locationType    LocationType? @map("location_type")
+  locationAddress String?      @map("location_address")
+  locationRoom    String?      @map("location_room")
+  onlineLink      String?      @map("online_link")
+  organizerId     String       @map("organizer_id")
+  status          MeetingStatus @default(SCHEDULED)
+  importance      Importance   @default(MEDIUM)
+  hasMinutes      Boolean      @default(false) @map("has_minutes")
+  hasFollowUp     Boolean      @default(false) @map("has_follow_up")
+  followUpDate    DateTime?    @map("follow_up_date")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  createdBy       String?      @map("created_by")
+  updatedBy       String?      @map("updated_by")
+  
+  // Relations
+  company         Company?     @relation(fields: [companyId], references: [id])
+  branch          Branch?      @relation(fields: [branchId], references: [id])
+  opportunity     Opportunity? @relation(fields: [opportunityId], references: [id])
+  project         Project?     @relation(fields: [projectId], references: [id])
+  organizer       User         @relation("Organizer", fields: [organizerId], references: [id])
+  participants    MeetingParticipant[]
+  agenda          MeetingAgenda[]
+  minutes         MeetingMinutes?
+  actionItems     MeetingActionItem[]
+  products        MeetingProduct[]
+  
+  @@index([date])
+  @@index([organizerId])
+  @@index([companyId])
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  id               String    @id @default(uuid())
+  meetingId        String    @map("meeting_id")
+  participantType  ParticipantType @map("participant_type")
+  userId           String?   @map("user_id")
+  contactId        String?   @map("contact_id")
+  name             String?
+  company          String?
+  position         String?
+  role             ParticipantRole?
+  attendance       AttendanceStatus @default(PENDING)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  meeting          Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user             User?     @relation("InternalParticipant", fields: [userId], references: [id])
+  contact          Contact?  @relation("ExternalParticipant", fields: [contactId], references: [id])
+  
+  @@unique([meetingId, userId])
+  @@unique([meetingId, contactId])
+  @@map("meeting_participants")
+}
+
+model MeetingAgenda {
+  id          String   @id @default(uuid())
+  meetingId   String   @map("meeting_id")
+  sequence    Int
+  topic       String
+  duration    Int?
+  presenter   String?
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  
+  @@map("meeting_agenda")
+}
+
+model MeetingMinutes {
+  id                   String   @id @default(uuid())
+  meetingId            String   @unique @map("meeting_id")
+  summary              String
+  keyPoints            String[] @map("key_points")
+  decisions            String[]
+  nextSteps            String?  @map("next_steps")
+  customerReaction     String?  @map("customer_reaction")
+  customerConcerns     String[] @map("customer_concerns")
+  customerInterests    String[] @map("customer_interests")
+  competitorsMentioned Json?    @map("competitors_mentioned")
+  attachments          Json?
+  createdAt            DateTime @default(now()) @map("created_at")
+  createdBy            String?  @map("created_by")
+  
+  // Relations
+  meeting              Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  
+  @@map("meeting_minutes")
+}
+
+model MeetingActionItem {
+  id          String    @id @default(uuid())
+  meetingId   String    @map("meeting_id")
+  task        String
+  assigneeId  String?   @map("assignee_id")
+  dueDate     DateTime? @map("due_date")
+  priority    Priority  @default(MEDIUM)
+  status      TaskStatus @default(PENDING)
+  completedAt DateTime? @map("completed_at")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  meeting     Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignee    User?     @relation("Assignee", fields: [assigneeId], references: [id])
+  
+  @@map("meeting_action_items")
+}
+
+model MeetingProduct {
+  id             String   @id @default(uuid())
+  meetingId      String   @map("meeting_id")
+  productId      String   @map("product_id")
+  quantity       Int      @default(1)
+  unitPrice      Float    @map("unit_price")
+  discountPercent Float   @default(0) @map("discount_percent")
+  totalPrice     Float    @map("total_price")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  meeting        Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  product        Product  @relation(fields: [productId], references: [id])
+  
+  @@map("meeting_products")
+}
+
+// ============================================
+// Product Master
+// ============================================
+
+model ProductCategory {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  parentId    String?   @map("parent_id")
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  parent      ProductCategory? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    ProductCategory[] @relation("CategoryHierarchy")
+  products    Product[]
+  
+  @@map("product_categories")
+}
+
+model Product {
+  id              String    @id @default(uuid())
+  code            String    @unique
+  name            String
+  categoryId      String?   @map("category_id")
+  type            ProductType?
+  description     String?
+  durationDays    Int?      @map("duration_days")
+  durationHours   Int?      @map("duration_hours")
+  minParticipants Int?      @map("min_participants")
+  maxParticipants Int?      @map("max_participants")
+  listPrice       Float     @map("list_price")
+  cost            Float?
+  margin          Float?
+  curriculum      Json?
+  prerequisites   String[]
+  objectives      String[]
+  targetAudience  String?   @map("target_audience")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  category        ProductCategory? @relation(fields: [categoryId], references: [id])
+  opportunities   OpportunityProduct[]
+  meetingProducts MeetingProduct[]
+  
+  @@map("products")
+}
+
+// ============================================
+// KPI Management
+// ============================================
+
+model KpiDefinition {
+  id               String    @id @default(uuid())
+  code             String    @unique
+  name             String
+  category         KpiCategory?
+  level            KpiLevel?
+  formula          String?
+  unit             KpiUnit?
+  targetDirection  TargetDirection? @map("target_direction")
+  frequency        KpiFrequency?
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  targets          KpiTarget[]
+  
+  @@map("kpi_definitions")
+}
+
+model KpiTarget {
+  id              String    @id @default(uuid())
+  kpiDefinitionId String    @map("kpi_definition_id")
+  entityType      EntityType @map("entity_type")
+  entityId        String?   @map("entity_id")
+  periodYear      Int       @map("period_year")
+  periodMonth     Int?      @map("period_month")
+  periodQuarter   Int?      @map("period_quarter")
+  targetValue     Float     @map("target_value")
+  stretchValue    Float?    @map("stretch_value")
+  minimumValue    Float?    @map("minimum_value")
+  weight          Int       @default(100)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  createdBy       String?   @map("created_by")
+  
+  // Relations
+  kpiDefinition   KpiDefinition @relation(fields: [kpiDefinitionId], references: [id])
+  createdByUser   User?     @relation("CreatedBy", fields: [createdBy], references: [id])
+  actuals         KpiActual[]
+  
+  @@map("kpi_targets")
+}
+
+model KpiActual {
+  id                 String    @id @default(uuid())
+  kpiTargetId        String    @map("kpi_target_id")
+  periodDate         DateTime  @map("period_date")
+  actualValue        Float     @map("actual_value")
+  achievementPercent Float?    @map("achievement_percent")
+  notes              String?
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  kpiTarget          KpiTarget @relation(fields: [kpiTargetId], references: [id])
+  
+  @@map("kpi_actuals")
+}
+
+// ============================================
+// Team & Department Structure
+// ============================================
+
+model Department {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  parentId    String?   @map("parent_id")
+  managerId   String?   @map("manager_id")
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  parent      Department? @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children    Department[] @relation("DepartmentHierarchy")
+  teams       Team[]
+  users       User[]
+  
+  @@map("departments")
+}
+
+model Team {
+  id           String    @id @default(uuid())
+  code         String    @unique
+  name         String
+  departmentId String?   @map("department_id")
+  teamLeadId   String?   @map("team_lead_id")
+  description  String?
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  department   Department? @relation(fields: [departmentId], references: [id])
+  users        User[]
+  leads        Lead[]
+  leadAssignments LeadAssignment[]
+  opportunities Opportunity[]
+  
+  @@map("teams")
+}
+
+// ============================================
+// Activity & History Tracking
+// ============================================
+
+model Activity {
+  id            String       @id @default(uuid())
+  entityType    EntityType   @map("entity_type")
+  entityId      String       @map("entity_id")
+  activityType  ActivityType @map("activity_type")
+  subject       String
+  description   String?
+  companyId     String?      @map("company_id")
+  contactId     String?      @map("contact_id")
+  opportunityId String?      @map("opportunity_id")
+  userId        String       @map("user_id")
+  startTime     DateTime     @map("start_time")
+  endTime       DateTime?    @map("end_time")
+  duration      Int?
+  outcome       String?
+  nextAction    String?      @map("next_action")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  
+  // Relations
+  company       Company?     @relation(fields: [companyId], references: [id])
+  contact       Contact?     @relation(fields: [contactId], references: [id])
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
+  user          User         @relation(fields: [userId], references: [id])
+  
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("activities")
+}
+
+model Task {
+  id            String     @id @default(uuid())
+  title         String
+  description   String?
+  priority      Priority   @default(MEDIUM)
+  status        TaskStatus @default(PENDING)
+  dueDate       DateTime?  @map("due_date")
+  projectId     String?    @map("project_id")
+  opportunityId String?    @map("opportunity_id")
+  assignedToId  String     @map("assigned_to_id")
+  completedAt   DateTime?  @map("completed_at")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  
+  // Relations
+  project       Project?     @relation(fields: [projectId], references: [id])
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
+  assignedTo    User         @relation(fields: [assignedToId], references: [id])
+  
+  @@map("tasks")
+}
+
 model Document {
   id         String       @id @default(uuid())
-  customerId String
+  entityType EntityType   @map("entity_type")
+  entityId   String       @map("entity_id")
   name       String
   type       DocumentType
   url        String
   size       Int
-  uploadedBy String
-  createdAt  DateTime     @default(now())
+  mimeType   String?      @map("mime_type")
+  uploadedBy String       @map("uploaded_by")
+  createdAt  DateTime     @default(now()) @map("created_at")
   
-  customer Customer @relation(fields: [customerId], references: [id])
+  @@index([entityType, entityId])
+  @@map("documents")
 }
 
-// Notifications
 model Notification {
-  id        String   @id @default(uuid())
-  userId    String
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
   type      String
   title     String
   message   String
-  isRead    Boolean  @default(false)
-  readAt    DateTime?
-  createdAt DateTime @default(now())
+  isRead    Boolean   @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
   
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, isRead])
+  @@map("notifications")
 }
 
+// ============================================
 // Enums
+// ============================================
+
 enum UserRole {
   ADMIN
   MANAGER
-  SALES_REP
-  SUPPORT
+  OPERATOR
   VIEWER
+}
+
+enum UserTier {
+  EXECUTIVE
+  MANAGER
+  OPERATOR
 }
 
 enum CustomerStatus {
@@ -291,11 +946,65 @@ enum CustomerStatus {
   CHURNED
 }
 
+enum CustomerTier {
+  VIP
+  GOLD
+  SILVER
+  BRONZE
+}
+
 enum CompanySize {
-  SMALL
-  MEDIUM
-  LARGE
+  STARTUP
+  SMB
+  MIDMARKET
   ENTERPRISE
+}
+
+enum BranchType {
+  HEADQUARTERS
+  BRANCH
+  FACTORY
+  RND
+  SALES_OFFICE
+}
+
+enum ContactRole {
+  DECISION_MAKER
+  INFLUENCER
+  USER
+  CHAMPION
+  GATEKEEPER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  UNQUALIFIED
+  CONVERTED
+}
+
+enum LeadSource {
+  WEBSITE
+  REFERRAL
+  CAMPAIGN
+  COLD_CALL
+  EVENT
+  PARTNER
+  SOCIAL_MEDIA
+}
+
+enum AssignmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OpportunityType {
+  NEW_BUSINESS
+  RENEWAL
+  EXPANSION
+  REPLACEMENT
 }
 
 enum OpportunityStage {
@@ -307,10 +1016,113 @@ enum OpportunityStage {
   CLOSED_LOST
 }
 
-enum OpportunityStatus {
-  OPEN
-  WON
-  LOST
+enum ProjectType {
+  LEADERSHIP
+  SALES
+  SERVICE
+  TECHNICAL
+  ONBOARDING
+  CUSTOM
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectPhase {
+  INITIATION
+  PLANNING
+  EXECUTION
+  MONITORING
+  CLOSING
+}
+
+enum ProjectHealth {
+  GREEN
+  YELLOW
+  RED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ClassStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MeetingTarget {
+  CUSTOMER
+  INTERNAL
+}
+
+enum MeetingType {
+  INITIAL
+  PROPOSAL
+  OPERATION
+  FOLLOWUP
+  TEAM
+  CROSS_DEPT
+  PARTNER
+  MANAGEMENT
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum LocationType {
+  ONSITE
+  ONLINE
+  HYBRID
+}
+
+enum ParticipantType {
+  INTERNAL
+  EXTERNAL
+}
+
+enum ParticipantRole {
+  ORGANIZER
+  PRESENTER
+  ATTENDEE
+  OPTIONAL
+}
+
+enum AttendanceStatus {
+  PENDING
+  CONFIRMED
+  ATTENDED
+  ABSENT
+}
+
+enum Importance {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ProductType {
+  TRAINING
+  CONSULTING
+  ASSESSMENT
+  COACHING
+  WORKSHOP
 }
 
 enum ActivityType {
@@ -342,13 +1154,52 @@ enum DocumentType {
   PROPOSAL
   INVOICE
   REPORT
+  PRESENTATION
   OTHER
 }
 
-enum ProjectStatus {
-  PLANNING
-  IN_PROGRESS
-  ON_HOLD
-  COMPLETED
-  CANCELLED
+enum KpiCategory {
+  SALES
+  PROJECT
+  FINANCE
+  CUSTOMER
+  OPERATIONAL
+}
+
+enum KpiLevel {
+  COMPANY
+  DEPARTMENT
+  TEAM
+  INDIVIDUAL
+}
+
+enum KpiUnit {
+  CURRENCY
+  PERCENT
+  COUNT
+  DAYS
+  HOURS
+}
+
+enum TargetDirection {
+  INCREASE
+  DECREASE
+  MAINTAIN
+}
+
+enum KpiFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum EntityType {
+  COMPANY
+  DEPARTMENT
+  TEAM
+  USER
+  PROJECT
+  OPPORTUNITY
 }

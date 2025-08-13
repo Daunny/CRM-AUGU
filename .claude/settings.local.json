@@ -16,7 +16,13 @@
       "Bash(curl:*)",
       "Bash(gh pr:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git remote add:*)",
+      "Bash(npm init:*)",
+      "Bash(touch:*)",
+      "Bash(npx prisma:*)",
+      "Bash(rm:*)",
+      "Bash(npm cache clean:*)"
     ],
     "deny": [],
     "ask": []

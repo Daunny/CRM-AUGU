@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+# Keep package-lock.json for reproducible builds
+# package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+prisma/migrations/dev/
+
+# Cache
+.cache/
+.parcel-cache/
+.turbo/
+.vercel/
+.webpack/
+
+# Temporary files
+tmp/
+temp/
+uploads/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker
+docker-compose.override.yml
+.dockerignore

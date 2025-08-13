@@ -1,0 +1,25 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ms-vscode.vscode-typescript-next",
+    "prisma.prisma",
+    "bradlc.vscode-tailwindcss",
+    "formulahendry.auto-rename-tag",
+    "formulahendry.auto-close-tag",
+    "christian-kohler.path-intellisense",
+    "mikestead.dotenv",
+    "usernamehw.errorlens",
+    "yoavbls.pretty-ts-errors",
+    "streetsidesoftware.code-spell-checker",
+    "eamodio.gitlens",
+    "donjayamanne.githistory",
+    "ms-azuretools.vscode-docker",
+    "rangav.vscode-thunder-client",
+    "humao.rest-client",
+    "redhat.vscode-yaml",
+    "ecmel.vscode-html-css",
+    "zignd.html-css-class-completion",
+    "wix.vscode-import-cost"
+  ]
+}

@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+
+# Database
+*.db
+*.sqlite
+prisma/migrations/
+
+# Cache
+.cache/
+coverage/
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Misc
+*.md
+*.json
+*.yaml
+*.yml
+*.env*

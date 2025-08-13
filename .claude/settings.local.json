@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose up:*)",
+      "Bash(npm install)",
+      "Bash(docker-compose:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(docker stop:*)",
+      "Bash(curl:*)",
+      "Bash(gh pr:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -63,8 +63,8 @@ export const getLeads = async (
     );
 
     res.json({
-      success: true,
       ...result,
+      success: true,
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -178,8 +178,8 @@ export const approveAssignment = async (
     );
 
     res.json({
-      success: true,
       ...result,
+      success: true,
       meta: {
         timestamp: new Date().toISOString(),
       },
@@ -204,8 +204,8 @@ export const rejectAssignment = async (
     );
 
     res.json({
-      success: true,
       ...result,
+      success: true,
       meta: {
         timestamp: new Date().toISOString(),
       },

@@ -40,7 +40,7 @@ export const getOpportunities = async (
       stage,
       type,
       ownerId,
-      teamId,
+      salesTeamId,
       minAmount,
       maxAmount,
       expectedCloseDateFrom,
@@ -52,8 +52,8 @@ export const getOpportunities = async (
       companyId: companyId as string,
       stage: stage as any,
       type: type as any,
-      ownerId: ownerId as string,
-      teamId: teamId as string,
+      accountManagerId: ownerId as string,
+      salesTeamId: salesTeamId as string,
       minAmount: minAmount ? parseFloat(minAmount as string) : undefined,
       maxAmount: maxAmount ? parseFloat(maxAmount as string) : undefined,
       expectedCloseDateFrom: expectedCloseDateFrom as string,
@@ -145,97 +145,6 @@ export const deleteOpportunity = async (
   }
 };
 
-// Proposal Controllers
-export const createProposal = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const proposal = await opportunityService.createProposal(
-      req.body,
-      req.user!.userId
-    );
-
-    res.status(201).json({
-      success: true,
-      data: proposal,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const getProposals = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { opportunityId } = req.params;
-    const proposals = await opportunityService.getProposals(opportunityId);
-
-    res.json({
-      success: true,
-      data: proposals,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const updateProposal = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { id } = req.params;
-    const proposal = await opportunityService.updateProposal(
-      id,
-      req.body,
-      req.user!.userId
-    );
-
-    res.json({
-      success: true,
-      data: proposal,
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const deleteProposal = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const { id } = req.params;
-    await opportunityService.deleteProposal(id, req.user!.userId);
-
-    res.json({
-      success: true,
-      message: 'Proposal deleted successfully',
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 // Pipeline Analytics
 export const getPipelineAnalytics = async (
   req: Request,
@@ -243,11 +152,11 @@ export const getPipelineAnalytics = async (
   next: NextFunction
 ) => {
   try {
-    const { teamId, ownerId, dateFrom, dateTo } = req.query;
+    const { salesTeamId, ownerId, dateFrom, dateTo } = req.query;
 
     const filter = {
-      teamId: teamId as string,
-      ownerId: ownerId as string,
+      salesTeamId: salesTeamId as string,
+      accountManagerId: ownerId as string,
       dateFrom: dateFrom as string,
       dateTo: dateTo as string,
     };

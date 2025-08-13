@@ -254,12 +254,11 @@ export const getContacts = async (
   next: NextFunction
 ) => {
   try {
-    const { branchId, userId, search, page = '1', limit = '20' } = req.query;
+    const { branchId, search, page = '1', limit = '20' } = req.query;
     
     const result = await companyService.getContacts(
       {
         branchId: branchId as string,
-        userId: userId as string,
         search: search as string,
       },
       parseInt(page as string),

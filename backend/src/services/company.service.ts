@@ -1,6 +1,8 @@
-import { Prisma, CompanySize, CustomerTier, CustomerStatus, BranchType } from '@prisma/client';
+import { CompanySize, CustomerTier, CustomerStatus, BranchType } from '@prisma/client';
 import prisma from '../config/database';
 import { NotFoundError, ConflictError } from '../utils/errors';
+import { QueryOptimizer, PaginatedResult } from '../utils/query-optimizer';
+import { cache, CacheTTL } from '../utils/cache-manager';
 
 interface CreateCompanyInput {
   code: string;
@@ -33,7 +35,7 @@ interface CreateBranchInput {
   addressStreet?: string;
   addressCity?: string;
   addressState?: string;
-  addressZip?: string;
+  addressPostal?: string;
   phone?: string;
   fax?: string;
   email?: string;
@@ -74,7 +76,7 @@ interface CompanyFilter {
 }
 
 export class CompanyService {
-  // Company CRUD
+  // Company CRUD with caching and optimization
   async createCompany(input: CreateCompanyInput, userId: string) {
     // Check if code already exists
     const existing = await prisma.company.findUnique({
@@ -101,16 +103,9 @@ export class CompanyService {
         createdBy: userId,
         updatedBy: userId,
       },
-      include: {
+      include: QueryOptimizer.optimizeIncludes({
         industry: true,
-        accountManager: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          }
-        },
+        accountManager: true,
         branches: {
           take: 3,
         },
@@ -121,58 +116,44 @@ export class CompanyService {
             projects: true,
           }
         }
-      }
+      })
     });
+
+    // Invalidate related caches
+    await cache.invalidateRelated('company', company.id);
+    await cache.clearPattern('query:Company:*');
 
     return company;
   }
 
-  async getCompanies(filter: CompanyFilter, page: number = 1, limit: number = 20) {
-    const where: Prisma.CompanyWhereInput = {};
-
-    if (filter.search) {
-      where.OR = [
-        { name: { contains: filter.search, mode: 'insensitive' } },
-        { code: { contains: filter.search, mode: 'insensitive' } },
-        { businessNumber: { contains: filter.search, mode: 'insensitive' } },
-      ];
+  async getCompanies(filter: CompanyFilter, page: number = 1, limit: number = 20): Promise<PaginatedResult<any>> {
+    // Try to get from cache
+    const cached = await cache.getQueryCache<PaginatedResult<any>>('Company', { filter, page, limit });
+    if (cached) {
+      return cached;
     }
 
-    if (filter.industryId) {
-      where.industryId = filter.industryId;
-    }
+    // Build optimized where clause
+    const where = QueryOptimizer.buildWhereClause({
+      search: filter.search,
+      industryId: filter.industryId,
+      companySize: filter.companySize,
+      tier: filter.tier,
+      status: filter.status,
+      accountManagerId: filter.accountManagerId,
+    });
 
-    if (filter.companySize) {
-      where.companySize = filter.companySize;
-    }
+    // Get pagination params
+    const paginationParams = QueryOptimizer.getPaginationParams({ page, limit });
 
-    if (filter.tier) {
-      where.tier = filter.tier;
-    }
-
-    if (filter.status) {
-      where.status = filter.status;
-    }
-
-    if (filter.accountManagerId) {
-      where.accountManagerId = filter.accountManagerId;
-    }
-
+    // Execute optimized query
     const [companies, total] = await Promise.all([
       prisma.company.findMany({
         where,
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
+        ...paginationParams,
+        include: QueryOptimizer.optimizeIncludes({
           industry: true,
-          accountManager: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-            }
-          },
+          accountManager: true,
           branches: {
             take: 3,
           },
@@ -183,36 +164,42 @@ export class CompanyService {
               projects: true,
             }
           }
-        },
+        }),
         orderBy: { updatedAt: 'desc' },
       }),
       prisma.company.count({ where }),
     ]);
 
-    return {
+    const result: PaginatedResult<any> = {
       data: companies,
       pagination: {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit),
+        hasNextPage: page < Math.ceil(total / limit),
+        hasPrevPage: page > 1,
       },
     };
+
+    // Cache the result
+    await cache.setQueryCache('Company', { filter, page, limit }, result, CacheTTL.MEDIUM);
+
+    return result;
   }
 
   async getCompanyById(id: string) {
+    // Try cache first
+    const cached = await cache.getCompanyCache(id);
+    if (cached) {
+      return cached;
+    }
+
     const company = await prisma.company.findUnique({
       where: { id },
-      include: {
+      include: QueryOptimizer.optimizeIncludes({
         industry: true,
-        accountManager: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          }
-        },
+        accountManager: true,
         branches: {
           orderBy: { name: 'asc' },
         },
@@ -220,26 +207,14 @@ export class CompanyService {
           take: 5,
           orderBy: { createdAt: 'desc' },
           include: {
-            contact: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-              }
-            }
+            contact: true,
           }
         },
         projects: {
           take: 5,
           orderBy: { createdAt: 'desc' },
           include: {
-            projectManager: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-              }
-            }
+            projectManager: true,
           }
         },
         _count: {
@@ -251,12 +226,15 @@ export class CompanyService {
             meetings: true,
           }
         }
-      },
+      }),
     });
 
     if (!company) {
       throw new NotFoundError('Company not found');
     }
+
+    // Cache the company
+    await cache.setCompanyCache(id, company, undefined, CacheTTL.LONG);
 
     return company;
   }
@@ -296,16 +274,9 @@ export class CompanyService {
         ...input,
         updatedBy: userId,
       },
-      include: {
+      include: QueryOptimizer.optimizeIncludes({
         industry: true,
-        accountManager: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          }
-        },
+        accountManager: true,
         branches: {
           take: 3,
         },
@@ -316,8 +287,12 @@ export class CompanyService {
             projects: true,
           }
         }
-      }
+      })
     });
+
+    // Invalidate caches
+    await cache.invalidateRelated('company', id);
+    await cache.clearPattern('query:Company:*');
 
     return company;
   }
@@ -361,9 +336,13 @@ export class CompanyService {
         where: { id }
       });
     }
+
+    // Invalidate caches
+    await cache.invalidateRelated('company', id);
+    await cache.clearPattern('query:Company:*');
   }
 
-  // Branch CRUD
+  // Branch CRUD with optimization
   async createBranch(input: CreateBranchInput, userId: string) {
     // Verify company exists
     const company = await prisma.company.findUnique({
@@ -389,49 +368,59 @@ export class CompanyService {
         createdBy: userId,
         updatedBy: userId,
       },
-      include: {
-        company: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          }
-        }
-      }
+      include: QueryOptimizer.optimizeIncludes({
+        company: true,
+      })
     });
+
+    // Invalidate company cache
+    await cache.invalidateRelated('company', input.companyId);
 
     return branch;
   }
 
   async getBranches(companyId: string) {
+    const cacheKey = `company:${companyId}:branches`;
+    
+    // Try cache first
+    const cached = await cache.get<any[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const branches = await prisma.branch.findMany({
-      where: {
-        companyId,
-        deletedAt: null,
-      },
+      where: QueryOptimizer.buildWhereClause({ companyId }),
       orderBy: { name: 'asc' },
     });
+
+    // Cache the result
+    await cache.set(cacheKey, branches, CacheTTL.MEDIUM);
 
     return branches;
   }
 
   async getBranchById(id: string) {
+    const cacheKey = `branch:${id}`;
+    
+    // Try cache first
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const branch = await prisma.branch.findUnique({
       where: { id },
-      include: {
-        company: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          }
-        },
-      }
+      include: QueryOptimizer.optimizeIncludes({
+        company: true,
+      })
     });
 
     if (!branch) {
       throw new NotFoundError('Branch not found');
     }
+
+    // Cache the result
+    await cache.set(cacheKey, branch, CacheTTL.LONG);
 
     return branch;
   }
@@ -461,16 +450,14 @@ export class CompanyService {
         ...input,
         updatedBy: userId,
       },
-      include: {
-        company: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          }
-        }
-      }
+      include: QueryOptimizer.optimizeIncludes({
+        company: true,
+      })
     });
+
+    // Invalidate caches
+    await cache.delete([`branch:${id}`, `company:${existing.companyId}:branches`]);
+    await cache.invalidateRelated('company', existing.companyId);
 
     return branch;
   }
@@ -492,9 +479,13 @@ export class CompanyService {
         deletedBy: userId,
       }
     });
+
+    // Invalidate caches
+    await cache.delete([`branch:${id}`, `company:${branch.companyId}:branches`]);
+    await cache.invalidateRelated('company', branch.companyId);
   }
 
-  // Contact CRUD
+  // Contact CRUD with optimization
   async createContact(input: CreateContactInput, userId: string) {
     // Convert birthday string to Date if needed
     if (input.birthday && typeof input.birthday === 'string') {
@@ -508,27 +499,25 @@ export class CompanyService {
         createdBy: userId,
         updatedBy: userId,
       },
-      include: {
+      include: QueryOptimizer.optimizeIncludes({
         branch: {
-          select: {
-            id: true,
-            name: true,
-            company: {
-              select: {
-                id: true,
-                name: true,
-              }
-            }
+          include: {
+            company: true,
           }
         }
-      }
+      })
     });
+
+    // Invalidate related caches
+    if (input.branchId) {
+      await cache.delete(`branch:${input.branchId}:contacts`);
+    }
 
     return contact;
   }
 
   async getContacts(filter: { branchId?: string; search?: string }, page: number = 1, limit: number = 20) {
-    const where: Prisma.ContactWhereInput = {
+    const where: any = {
       deletedAt: null,
     };
 
@@ -544,25 +533,19 @@ export class CompanyService {
       ];
     }
 
+    const paginationParams = QueryOptimizer.getPaginationParams({ page, limit });
+
     const [contacts, total] = await Promise.all([
       prisma.contact.findMany({
         where,
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
+        ...paginationParams,
+        include: QueryOptimizer.optimizeIncludes({
           branch: {
-            select: {
-              id: true,
-              name: true,
-              company: {
-                select: {
-                  id: true,
-                  name: true,
-                }
-              }
+            include: {
+              company: true,
             }
           }
-        },
+        }),
         orderBy: [
           { isPrimary: 'desc' },
           { lastName: 'asc' },
@@ -572,21 +555,36 @@ export class CompanyService {
       prisma.contact.count({ where }),
     ]);
 
-    return {
+    const result: PaginatedResult<any> = {
       data: contacts,
       pagination: {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit),
+        hasNextPage: page < Math.ceil(total / limit),
+        hasPrevPage: page > 1,
       },
     };
+
+    // Cache the result
+    await cache.setQueryCache('Contact', { filter, page, limit }, result, CacheTTL.SHORT);
+
+    return result;
   }
 
   async getContactById(id: string) {
+    const cacheKey = `contact:${id}`;
+    
+    // Try cache first
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const contact = await prisma.contact.findUnique({
       where: { id },
-      include: {
+      include: QueryOptimizer.optimizeIncludes({
         branch: {
           select: {
             id: true,
@@ -603,12 +601,15 @@ export class CompanyService {
           take: 5,
           orderBy: { createdAt: 'desc' },
         }
-      }
+      })
     });
 
     if (!contact) {
       throw new NotFoundError('Contact not found');
     }
+
+    // Cache the result
+    await cache.set(cacheKey, contact, CacheTTL.MEDIUM);
 
     return contact;
   }
@@ -633,21 +634,21 @@ export class CompanyService {
         ...input,
         updatedBy: userId,
       },
-      include: {
+      include: QueryOptimizer.optimizeIncludes({
         branch: {
-          select: {
-            id: true,
-            name: true,
-            company: {
-              select: {
-                id: true,
-                name: true,
-              }
-            }
+          include: {
+            company: true,
           }
-        },
-      }
+        }
+      })
     });
+
+    // Invalidate caches
+    await cache.delete(`contact:${id}`);
+    await cache.clearPattern('query:Contact:*');
+    if (existing.branchId) {
+      await cache.delete(`branch:${existing.branchId}:contacts`);
+    }
 
     return contact;
   }
@@ -669,6 +670,105 @@ export class CompanyService {
         deletedBy: userId,
       }
     });
+
+    // Invalidate caches
+    await cache.delete(`contact:${id}`);
+    await cache.clearPattern('query:Contact:*');
+    if (contact.branchId) {
+      await cache.delete(`branch:${contact.branchId}:contacts`);
+    }
+  }
+
+  // Bulk operations with optimization
+  async bulkCreateCompanies(companies: CreateCompanyInput[], userId: string) {
+    const results = await QueryOptimizer.batchOperation(
+      companies,
+      async (batch) => {
+        return prisma.$transaction(
+          batch.map(company => 
+            prisma.company.create({
+              data: {
+                ...company,
+                createdBy: userId,
+                updatedBy: userId,
+              }
+            })
+          )
+        );
+      },
+      50 // Process in batches of 50
+    );
+
+    // Clear all company caches
+    await cache.clearPattern('company:*');
+    await cache.clearPattern('query:Company:*');
+
+    return results.flat();
+  }
+
+  // Export companies with streaming for large datasets
+  async *exportCompanies(filter: CompanyFilter) {
+    const where = QueryOptimizer.buildWhereClause({
+      search: filter.search,
+      industryId: filter.industryId,
+      companySize: filter.companySize,
+      tier: filter.tier,
+      status: filter.status,
+      accountManagerId: filter.accountManagerId,
+    });
+
+    yield* QueryOptimizer.streamLargeDataset(
+      prisma.company,
+      where,
+      1000 // Stream in batches of 1000
+    );
+  }
+
+  // Get company statistics
+  async getCompanyStats() {
+    const cacheKey = 'stats:company:overview';
+    
+    // Try cache first
+    const cached = await cache.getStats(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const stats = await prisma.$transaction([
+      prisma.company.count(),
+      prisma.company.count({ where: { status: CustomerStatus.ACTIVE } }),
+      prisma.company.groupBy({
+        by: ['tier'],
+        _count: true,
+      }),
+      prisma.company.groupBy({
+        by: ['companySize'],
+        _count: true,
+      }),
+      prisma.company.aggregate({
+        _sum: {
+          annualRevenue: true,
+          employeeCount: true,
+        },
+        _avg: {
+          annualRevenue: true,
+          employeeCount: true,
+        },
+      }),
+    ]);
+
+    const result = {
+      total: stats[0],
+      active: stats[1],
+      byTier: stats[2],
+      bySize: stats[3],
+      aggregates: stats[4],
+    };
+
+    // Cache for 1 hour
+    await cache.setStats(cacheKey, result, CacheTTL.LONG);
+
+    return result;
   }
 }
 

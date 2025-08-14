@@ -17,7 +17,8 @@ import opportunityRoutes from './routes/opportunity.routes';
 // import meetingRoutes from './routes/meeting.routes';
 // import kpiRoutes from './routes/kpi.routes';
 
-const app: Application = express();
+export function createApp(): Application {
+  const app: Application = express();
 
 // Basic middleware
 app.use(helmet());
@@ -84,4 +85,8 @@ app.use('/api/opportunities', opportunityRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
+  return app;
+}
+
+const app = createApp();
 export default app;

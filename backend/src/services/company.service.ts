@@ -1,4 +1,4 @@
-import { CompanySize, CustomerTier, CustomerStatus, BranchType } from '@prisma/client';
+import { CompanySize, CustomerTier, CustomerStatus, BranchType, Prisma } from '@prisma/client';
 import prisma from '../config/database';
 import { NotFoundError, ConflictError } from '../utils/errors';
 import { QueryOptimizer, PaginatedResult } from '../utils/query-optimizer';
@@ -57,13 +57,11 @@ interface CreateContactInput {
   phone?: string;
   mobile?: string;
   isPrimary?: boolean;
-  birthDate?: Date | string;
+  birthday?: Date | string;
   preferredContactMethod?: string;
-  newsletter?: boolean;
   notes?: string;
-  customFields?: any;
-  userId?: string;
-  branchId?: string;
+  linkedinUrl?: string;
+  branchId: string;
 }
 
 interface UpdateContactInput extends Partial<CreateContactInput> {}
@@ -318,9 +316,9 @@ export class CompanyService {
     }
 
     // Check if company has related records
-    const hasRelatedRecords = 
-      company._count.branches > 0 || 
-      company._count.opportunities > 0 || 
+    const hasRelatedRecords =
+      company._count.branches > 0 ||
+      company._count.opportunities > 0 ||
       company._count.projects > 0;
 
     if (hasRelatedRecords) {
@@ -489,9 +487,9 @@ export class CompanyService {
 
   // Contact CRUD with optimization
   async createContact(input: CreateContactInput, userId: string) {
-    // Convert birthDate string to Date if needed
-    if (input.birthDate && typeof input.birthDate === 'string') {
-      input.birthDate = new Date(input.birthDate);
+    // Convert birthday string to Date if needed
+    if (input.birthday && typeof input.birthday === 'string') {
+      input.birthday = new Date(input.birthday);
     }
 
     const contact = await prisma.contact.create({
@@ -619,9 +617,9 @@ export class CompanyService {
       throw new NotFoundError('Contact not found');
     }
 
-    // Convert birthDate string to Date if needed
-    if (input.birthDate && typeof input.birthDate === 'string') {
-      input.birthDate = new Date(input.birthDate);
+    // Convert birthday string to Date if needed
+    if (input.birthday && typeof input.birthday === 'string') {
+      input.birthday = new Date(input.birthday);
     }
 
     const contact = await prisma.contact.update({
@@ -682,7 +680,7 @@ export class CompanyService {
       companies,
       async (batch) => {
         return prisma.$transaction(
-          batch.map(company => 
+          batch.map(company =>
             prisma.company.create({
               data: {
                 ...company,

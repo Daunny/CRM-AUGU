@@ -25,7 +25,8 @@
       "Bash(npm cache clean:*)",
       "Bash(npm run test:unit:*)",
       "Bash(grep:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(git pull:*)"
     ],
     "deny": [],
     "ask": []

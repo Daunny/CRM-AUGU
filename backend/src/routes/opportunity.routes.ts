@@ -78,41 +78,6 @@ const updateOpportunitySchema = z.object({
   }),
 });
 
-const createProposalSchema = z.object({
-  body: z.object({
-    opportunityId: z.string().uuid(),
-    code: z.string().min(1).max(50),
-    title: z.string().min(1).max(200),
-    version: z.string().min(1).max(20),
-    content: z.string().optional(),
-    validUntil: z.string().optional(),
-    proposedAmount: z.number(),
-    discount: z.number().optional(),
-    finalAmount: z.number(),
-    terms: z.string().optional(),
-    attachments: z.array(z.string()).optional(),
-  }),
-});
-
-const updateProposalSchema = z.object({
-  body: z.object({
-    code: z.string().min(1).max(50).optional(),
-    title: z.string().min(1).max(200).optional(),
-    version: z.string().min(1).max(20).optional(),
-    content: z.string().optional(),
-    validUntil: z.string().optional(),
-    proposedAmount: z.number().optional(),
-    discount: z.number().optional(),
-    finalAmount: z.number().optional(),
-    terms: z.string().optional(),
-    attachments: z.array(z.string()).optional(),
-    status: z.enum(['DRAFT', 'SENT', 'VIEWED', 'ACCEPTED', 'REJECTED', 'EXPIRED']).optional(),
-    approvedBy: z.string().uuid().optional(),
-    approvedAt: z.string().optional(),
-    rejectionReason: z.string().optional(),
-  }),
-});
-
 // Opportunity routes
 router.get(
   '/',
@@ -151,34 +116,6 @@ router.delete(
   authenticate,
   authorizeByTier(UserTier.MANAGER, UserTier.EXECUTIVE),
   opportunityController.deleteOpportunity
-);
-
-// Proposal routes
-router.post(
-  '/proposals',
-  authenticate,
-  validate(createProposalSchema),
-  opportunityController.createProposal
-);
-
-router.get(
-  '/:opportunityId/proposals',
-  authenticate,
-  opportunityController.getProposals
-);
-
-router.patch(
-  '/proposals/:id',
-  authenticate,
-  validate(updateProposalSchema),
-  opportunityController.updateProposal
-);
-
-router.delete(
-  '/proposals/:id',
-  authenticate,
-  authorizeByTier(UserTier.MANAGER, UserTier.EXECUTIVE),
-  opportunityController.deleteProposal
 );
 
 export default router;

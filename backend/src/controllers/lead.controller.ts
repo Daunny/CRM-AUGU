@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { leadService } from '../services/lead.service';
 import { AuthRequest } from '../middlewares/auth';
+import { LeadFilter } from '../types/common.types';
 
 // Lead Controllers
 export const createLead = async (
@@ -45,10 +46,10 @@ export const getLeads = async (
       dateTo,
     } = req.query;
 
-    const filter = {
+    const filter: LeadFilter = {
       search: search as string,
-      status: status as any,
-      source: source as any,
+      status: status as string,
+      source: source as string,
       assignedToId: assignedToId as string,
       assignedTeamId: assignedTeamId as string,
       bantScore: bantScore ? parseInt(bantScore as string) : undefined,

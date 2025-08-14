@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { opportunityService } from '../services/opportunity.service';
 import { AuthRequest } from '../middlewares/auth';
+import { OpportunityFilter, PipelineAnalyticsFilter } from '../types/common.types';
 
 // Opportunity Controllers
 export const createOpportunity = async (
@@ -47,11 +48,11 @@ export const getOpportunities = async (
       expectedCloseDateTo,
     } = req.query;
 
-    const filter = {
+    const filter: OpportunityFilter = {
       search: search as string,
       companyId: companyId as string,
-      stage: stage as any,
-      type: type as any,
+      stage: stage as string,
+      type: type as string,
       accountManagerId: ownerId as string,
       salesTeamId: salesTeamId as string,
       minAmount: minAmount ? parseFloat(minAmount as string) : undefined,
@@ -154,7 +155,7 @@ export const getPipelineAnalytics = async (
   try {
     const { salesTeamId, ownerId, dateFrom, dateTo } = req.query;
 
-    const filter = {
+    const filter: PipelineAnalyticsFilter = {
       salesTeamId: salesTeamId as string,
       accountManagerId: ownerId as string,
       dateFrom: dateFrom as string,

@@ -55,6 +55,12 @@ model User {
   meetingParticipants MeetingParticipant[] @relation("InternalParticipant")
   meetingActionItems MeetingActionItem[] @relation("Assignee")
   kpiTargets       KpiTarget[]      @relation("CreatedBy")
+  proposalsSubmitted Proposal[]      @relation("ProposalSubmitter")
+  proposalsApproved Proposal[]       @relation("ProposalApprover")
+  proposalsRejected Proposal[]       @relation("ProposalRejector")
+  proposalVersions ProposalVersion[] @relation("ProposalVersionCreator")
+  proposalApprovals ProposalApproval[] @relation("ProposalApprovalApprover")
+  proposalTemplates ProposalTemplate[] @relation("ProposalTemplateCreator")
   
   @@index([email])
   @@index([departmentId])
@@ -102,6 +108,13 @@ model Company {
   tags              String[]
   customFields      Json?          @map("custom_fields")
   accountManagerId  String?        @map("account_manager_id")
+  
+  // Analytics fields
+  segment           String?
+  healthScore       Float?         @map("health_score")
+  riskLevel         String?        @map("risk_level")
+  engagementScore   Float?         @map("engagement_score")
+  lastHealthCheck   DateTime?      @map("last_health_check")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   createdBy         String?        @map("created_by")
@@ -324,6 +337,7 @@ model Opportunity {
   tasks             Task[]
   products          OpportunityProduct[]
   meetings          Meeting[]
+  proposals         Proposal[]
   
   @@index([code])
   @@index([stage])
@@ -359,6 +373,151 @@ model OpportunityProduct {
   product       Product     @relation(fields: [productId], references: [id])
   
   @@map("opportunity_products")
+}
+
+// ============================================
+// Proposal Management
+// ============================================
+
+model Proposal {
+  id                String         @id @default(uuid())
+  code              String         @unique
+  opportunityId     String         @map("opportunity_id")
+  version           Int            @default(1)
+  title             String
+  executiveSummary  String?        @map("executive_summary")
+  templateId        String?        @map("template_id")
+  status            ProposalStatus @default(DRAFT)
+  validUntil        DateTime       @map("valid_until")
+  
+  // Pricing
+  subtotal          Float
+  discountPercent   Float          @default(0) @map("discount_percent")
+  discountAmount    Float          @default(0) @map("discount_amount")
+  tax               Float          @default(0)
+  totalAmount       Float          @map("total_amount")
+  currency          String         @default("KRW")
+  
+  // Terms
+  paymentTerms      String?        @map("payment_terms")
+  deliveryTerms     String?        @map("delivery_terms")
+  warrantyTerms     String?        @map("warranty_terms")
+  specialTerms      String?        @map("special_terms")
+  
+  // Workflow
+  submittedAt       DateTime?      @map("submitted_at")
+  submittedBy       String?        @map("submitted_by")
+  approvedAt        DateTime?      @map("approved_at")
+  approvedBy        String?        @map("approved_by")
+  rejectedAt        DateTime?      @map("rejected_at")
+  rejectedBy        String?        @map("rejected_by")
+  rejectionReason   String?        @map("rejection_reason")
+  sentToCustomerAt  DateTime?      @map("sent_to_customer_at")
+  customerViewedAt  DateTime?      @map("customer_viewed_at")
+  customerSignedAt  DateTime?      @map("customer_signed_at")
+  signedBy          String?        @map("signed_by")
+  
+  // Files
+  documentUrl       String?        @map("document_url")
+  attachments       Json?
+  
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  createdBy         String?        @map("created_by")
+  updatedBy         String?        @map("updated_by")
+  
+  // Relations
+  opportunity       Opportunity    @relation(fields: [opportunityId], references: [id])
+  template          ProposalTemplate? @relation(fields: [templateId], references: [id])
+  submitter         User?          @relation("ProposalSubmitter", fields: [submittedBy], references: [id])
+  approver          User?          @relation("ProposalApprover", fields: [approvedBy], references: [id])
+  rejector          User?          @relation("ProposalRejector", fields: [rejectedBy], references: [id])
+  items             ProposalItem[]
+  versions          ProposalVersion[]
+  approvals         ProposalApproval[]
+  
+  @@index([code])
+  @@index([opportunityId])
+  @@index([status])
+  @@map("proposals")
+}
+
+model ProposalItem {
+  id               String   @id @default(uuid())
+  proposalId       String   @map("proposal_id")
+  productId        String?  @map("product_id")
+  sequence         Int
+  itemType         ProposalItemType @map("item_type")
+  name             String
+  description      String?
+  quantity         Int
+  unitPrice        Float    @map("unit_price")
+  discountPercent  Float    @default(0) @map("discount_percent")
+  totalPrice       Float    @map("total_price")
+  notes            String?
+  
+  // Relations
+  proposal         Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  product          Product? @relation(fields: [productId], references: [id])
+  
+  @@map("proposal_items")
+}
+
+model ProposalVersion {
+  id              String    @id @default(uuid())
+  proposalId      String    @map("proposal_id")
+  version         Int
+  changes         String?
+  content         Json
+  createdAt       DateTime  @default(now()) @map("created_at")
+  createdBy       String?   @map("created_by")
+  
+  // Relations
+  proposal        Proposal  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  creator         User?     @relation("ProposalVersionCreator", fields: [createdBy], references: [id])
+  
+  @@unique([proposalId, version])
+  @@map("proposal_versions")
+}
+
+model ProposalApproval {
+  id              String          @id @default(uuid())
+  proposalId      String          @map("proposal_id")
+  approverId      String          @map("approver_id")
+  level           Int
+  status          ProposalApprovalStatus  @default(PENDING)
+  comments        String?
+  approvedAt      DateTime?       @map("approved_at")
+  rejectedAt      DateTime?       @map("rejected_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  
+  // Relations
+  proposal        Proposal        @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  approver        User            @relation("ProposalApprovalApprover", fields: [approverId], references: [id])
+  
+  @@map("proposal_approvals")
+}
+
+model ProposalTemplate {
+  id              String          @id @default(uuid())
+  code            String          @unique
+  name            String
+  category        String?
+  description     String?
+  content         Json
+  sections        Json?
+  terms           Json?
+  isActive        Boolean         @default(true) @map("is_active")
+  usageCount      Int             @default(0) @map("usage_count")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  createdBy       String?         @map("created_by")
+  
+  // Relations
+  proposals       Proposal[]
+  creator         User?           @relation("ProposalTemplateCreator", fields: [createdBy], references: [id])
+  
+  @@map("proposal_templates")
 }
 
 // ============================================
@@ -725,6 +884,7 @@ model Product {
   category        ProductCategory? @relation(fields: [categoryId], references: [id])
   opportunities   OpportunityProduct[]
   meetingProducts MeetingProduct[]
+  proposalItems   ProposalItem[]
   
   @@map("products")
 }
@@ -1202,4 +1362,31 @@ enum EntityType {
   USER
   PROJECT
   OPPORTUNITY
+}
+
+enum ProposalStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SENT
+  VIEWED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum ProposalItemType {
+  PRODUCT
+  SERVICE
+  CUSTOM
+  DISCOUNT
+  ADJUSTMENT
+}
+
+enum ProposalApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
 }

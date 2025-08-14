@@ -26,6 +26,8 @@
       "Bash(npm run test:unit:*)",
       "Bash(grep:*)",
       "Bash(npx tsc:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit:*)",
       "Bash(git pull:*)"
     ],
     "deny": [],

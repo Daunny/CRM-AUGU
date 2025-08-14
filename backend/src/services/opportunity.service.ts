@@ -1,6 +1,6 @@
-import { Prisma, OpportunityType, OpportunityStage, ProposalStatus } from '@prisma/client';
+import { Prisma, OpportunityType, OpportunityStage } from '@prisma/client';
 import prisma from '../config/database';
-import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
+import { NotFoundError, ConflictError } from '../utils/errors';
 
 interface CreateOpportunityInput {
   code: string;
@@ -21,13 +21,12 @@ interface CreateOpportunityInput {
   lossReason?: string;
   tags?: string[];
   customFields?: any;
-  ownerId?: string;
-  teamId?: string;
+  accountManagerId?: string;
+  salesTeamId?: string;
 }
 
 interface UpdateOpportunityInput extends Partial<CreateOpportunityInput> {
-  closedAt?: Date | string;
-  wonAmount?: number;
+  actualCloseDate?: Date | string;
 }
 
 interface OpportunityFilter {
@@ -35,33 +34,12 @@ interface OpportunityFilter {
   companyId?: string;
   stage?: OpportunityStage;
   type?: OpportunityType;
-  ownerId?: string;
-  teamId?: string;
+  accountManagerId?: string;
+  salesTeamId?: string;
   minAmount?: number;
   maxAmount?: number;
   expectedCloseDateFrom?: Date | string;
   expectedCloseDateTo?: Date | string;
-}
-
-interface CreateProposalInput {
-  opportunityId: string;
-  code: string;
-  title: string;
-  version: string;
-  content?: string;
-  validUntil?: Date | string;
-  proposedAmount: number;
-  discount?: number;
-  finalAmount: number;
-  terms?: string;
-  attachments?: string[];
-}
-
-interface UpdateProposalInput extends Partial<Omit<CreateProposalInput, 'opportunityId'>> {
-  status?: ProposalStatus;
-  approvedBy?: string;
-  approvedAt?: Date | string;
-  rejectionReason?: string;
 }
 
 export class OpportunityService {
@@ -76,8 +54,6 @@ export class OpportunityService {
     const probabilityMap: Record<OpportunityStage, number> = {
       [OpportunityStage.QUALIFYING]: 10,
       [OpportunityStage.NEEDS_ANALYSIS]: 20,
-      [OpportunityStage.VALUE_PROPOSITION]: 30,
-      [OpportunityStage.DECISION_MAKERS]: 40,
       [OpportunityStage.PROPOSAL]: 60,
       [OpportunityStage.NEGOTIATION]: 80,
       [OpportunityStage.CLOSED_WON]: 100,
@@ -123,7 +99,7 @@ export class OpportunityService {
         ...input,
         probability,
         expectedAmount,
-        ownerId: input.ownerId || userId,
+        accountManagerId: input.accountManagerId || userId,
         createdBy: userId,
         updatedBy: userId,
       },
@@ -149,7 +125,7 @@ export class OpportunityService {
             email: true,
           }
         },
-        owner: {
+        accountManager: {
           select: {
             id: true,
             firstName: true,
@@ -157,7 +133,7 @@ export class OpportunityService {
             email: true,
           }
         },
-        team: {
+        salesTeam: {
           select: {
             id: true,
             name: true,
@@ -169,15 +145,15 @@ export class OpportunityService {
     // Create activity log
     await prisma.activity.create({
       data: {
-        type: 'OPPORTUNITY_CREATED',
+        activityType: 'NOTE',
+        entityType: 'OPPORTUNITY',
+        entityId: opportunity.id,
         subject: `Opportunity ${opportunity.code} created`,
         description: `New opportunity "${opportunity.title}" created for ${company.name}`,
         companyId: input.companyId,
         opportunityId: opportunity.id,
-        performedBy: userId,
-        activityDate: new Date(),
-        createdBy: userId,
-        updatedBy: userId,
+        userId,
+        startTime: new Date(),
       }
     });
 
@@ -209,12 +185,12 @@ export class OpportunityService {
       where.type = filter.type;
     }
 
-    if (filter.ownerId) {
-      where.ownerId = filter.ownerId;
+    if (filter.accountManagerId) {
+      where.accountManagerId = filter.accountManagerId;
     }
 
-    if (filter.teamId) {
-      where.teamId = filter.teamId;
+    if (filter.salesTeamId) {
+      where.salesTeamId = filter.salesTeamId;
     }
 
     if (filter.minAmount !== undefined || filter.maxAmount !== undefined) {
@@ -257,14 +233,14 @@ export class OpportunityService {
               lastName: true,
             }
           },
-          owner: {
+          accountManager: {
             select: {
               id: true,
               firstName: true,
               lastName: true,
             }
           },
-          team: {
+          salesTeam: {
             select: {
               id: true,
               name: true,
@@ -272,7 +248,6 @@ export class OpportunityService {
           },
           _count: {
             select: {
-              proposals: true,
               activities: true,
             }
           }
@@ -326,7 +301,7 @@ export class OpportunityService {
             mobile: true,
           }
         },
-        owner: {
+        accountManager: {
           select: {
             id: true,
             firstName: true,
@@ -335,29 +310,17 @@ export class OpportunityService {
             phone: true,
           }
         },
-        team: {
+        salesTeam: {
           select: {
             id: true,
             name: true,
           }
         },
-        proposals: {
-          orderBy: { createdAt: 'desc' },
-          include: {
-            createdByUser: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-              }
-            }
-          }
-        },
         activities: {
-          orderBy: { activityDate: 'desc' },
+          orderBy: { startTime: 'desc' },
           take: 10,
           include: {
-            performedByUser: {
+            user: {
               select: {
                 id: true,
                 firstName: true,
@@ -368,7 +331,6 @@ export class OpportunityService {
         },
         _count: {
           select: {
-            proposals: true,
             activities: true,
           }
         }
@@ -408,8 +370,8 @@ export class OpportunityService {
     if (input.nextActionDate && typeof input.nextActionDate === 'string') {
       input.nextActionDate = new Date(input.nextActionDate);
     }
-    if (input.closedAt && typeof input.closedAt === 'string') {
-      input.closedAt = new Date(input.closedAt);
+    if (input.actualCloseDate && typeof input.actualCloseDate === 'string') {
+      input.actualCloseDate = new Date(input.actualCloseDate);
     }
 
     // Update probability based on stage if stage changed
@@ -425,15 +387,12 @@ export class OpportunityService {
     const expectedAmount = this.calculateExpectedAmount(amount || 0, probability);
 
     // Handle stage changes
-    let closedAt = existing.closedAt;
-    let wonAmount = existing.wonAmount;
+    let actualCloseDate = existing.actualCloseDate;
     
     if (input.stage === OpportunityStage.CLOSED_WON) {
-      closedAt = input.closedAt || new Date();
-      wonAmount = input.wonAmount || amount;
+      actualCloseDate = new Date(input.actualCloseDate || new Date());
     } else if (input.stage === OpportunityStage.CLOSED_LOST) {
-      closedAt = input.closedAt || new Date();
-      wonAmount = 0;
+      actualCloseDate = new Date(input.actualCloseDate || new Date());
     }
 
     const opportunity = await prisma.opportunity.update({
@@ -442,8 +401,7 @@ export class OpportunityService {
         ...input,
         probability,
         expectedAmount,
-        closedAt,
-        wonAmount,
+        actualCloseDate,
         updatedBy: userId,
       },
       include: {
@@ -454,7 +412,7 @@ export class OpportunityService {
             code: true,
           }
         },
-        owner: {
+        accountManager: {
           select: {
             id: true,
             firstName: true,
@@ -468,15 +426,15 @@ export class OpportunityService {
     if (input.stage && input.stage !== existing.stage) {
       await prisma.activity.create({
         data: {
-          type: 'STAGE_CHANGE',
+          activityType: 'NOTE',
+          entityType: 'OPPORTUNITY',
+          entityId: opportunity.id,
           subject: `Stage changed: ${existing.stage} → ${input.stage}`,
           description: `Opportunity ${opportunity.code} stage updated`,
           companyId: opportunity.companyId,
           opportunityId: opportunity.id,
-          performedBy: userId,
-          activityDate: new Date(),
-          createdBy: userId,
-          updatedBy: userId,
+          userId,
+          startTime: new Date(),
         }
       });
     }
@@ -487,23 +445,13 @@ export class OpportunityService {
   async deleteOpportunity(id: string, userId: string) {
     const opportunity = await prisma.opportunity.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: {
-            proposals: true,
-            projects: true,
-          }
-        }
-      }
     });
 
     if (!opportunity) {
       throw new NotFoundError('Opportunity not found');
     }
 
-    if (opportunity._count.projects > 0) {
-      throw new ValidationError('Cannot delete opportunity with associated projects');
-    }
+    // For now, we'll allow deletion
 
     // Soft delete
     await prisma.opportunity.update({
@@ -515,190 +463,18 @@ export class OpportunityService {
     });
   }
 
-  // Proposal Management
-  async createProposal(input: CreateProposalInput, userId: string) {
-    // Verify opportunity exists
-    const opportunity = await prisma.opportunity.findUnique({
-      where: { id: input.opportunityId }
-    });
-
-    if (!opportunity) {
-      throw new NotFoundError('Opportunity not found');
-    }
-
-    // Check if code already exists
-    const existing = await prisma.proposal.findUnique({
-      where: { code: input.code }
-    });
-
-    if (existing) {
-      throw new ConflictError('Proposal code already exists');
-    }
-
-    // Convert validUntil date if needed
-    if (input.validUntil && typeof input.validUntil === 'string') {
-      input.validUntil = new Date(input.validUntil);
-    }
-
-    const proposal = await prisma.proposal.create({
-      data: {
-        ...input,
-        status: ProposalStatus.DRAFT,
-        createdBy: userId,
-        updatedBy: userId,
-      },
-      include: {
-        opportunity: {
-          select: {
-            id: true,
-            code: true,
-            title: true,
-            company: {
-              select: {
-                id: true,
-                name: true,
-              }
-            }
-          }
-        }
-      }
-    });
-
-    // Update opportunity stage to PROPOSAL if needed
-    if (opportunity.stage !== OpportunityStage.PROPOSAL && 
-        opportunity.stage !== OpportunityStage.NEGOTIATION &&
-        opportunity.stage !== OpportunityStage.CLOSED_WON) {
-      await prisma.opportunity.update({
-        where: { id: input.opportunityId },
-        data: {
-          stage: OpportunityStage.PROPOSAL,
-          probability: this.getStageProbability(OpportunityStage.PROPOSAL),
-          updatedBy: userId,
-        }
-      });
-    }
-
-    return proposal;
-  }
-
-  async getProposals(opportunityId: string) {
-    const proposals = await prisma.proposal.findMany({
-      where: {
-        opportunityId,
-        deletedAt: null,
-      },
-      orderBy: [
-        { version: 'desc' },
-        { createdAt: 'desc' }
-      ],
-      include: {
-        createdByUser: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          }
-        }
-      }
-    });
-
-    return proposals;
-  }
-
-  async updateProposal(id: string, input: UpdateProposalInput, userId: string) {
-    const existing = await prisma.proposal.findUnique({
-      where: { id }
-    });
-
-    if (!existing) {
-      throw new NotFoundError('Proposal not found');
-    }
-
-    // Convert dates if needed
-    if (input.validUntil && typeof input.validUntil === 'string') {
-      input.validUntil = new Date(input.validUntil);
-    }
-    if (input.approvedAt && typeof input.approvedAt === 'string') {
-      input.approvedAt = new Date(input.approvedAt);
-    }
-
-    // Check if new code conflicts
-    if (input.code && input.code !== existing.code) {
-      const codeExists = await prisma.proposal.findUnique({
-        where: { code: input.code }
-      });
-      if (codeExists) {
-        throw new ConflictError('Proposal code already exists');
-      }
-    }
-
-    const proposal = await prisma.proposal.update({
-      where: { id },
-      data: {
-        ...input,
-        updatedBy: userId,
-      },
-      include: {
-        opportunity: {
-          select: {
-            id: true,
-            code: true,
-            title: true,
-          }
-        }
-      }
-    });
-
-    // If proposal is accepted, update opportunity stage
-    if (input.status === ProposalStatus.ACCEPTED && existing.status !== ProposalStatus.ACCEPTED) {
-      await prisma.opportunity.update({
-        where: { id: existing.opportunityId },
-        data: {
-          stage: OpportunityStage.NEGOTIATION,
-          probability: this.getStageProbability(OpportunityStage.NEGOTIATION),
-          updatedBy: userId,
-        }
-      });
-    }
-
-    return proposal;
-  }
-
-  async deleteProposal(id: string, userId: string) {
-    const proposal = await prisma.proposal.findUnique({
-      where: { id }
-    });
-
-    if (!proposal) {
-      throw new NotFoundError('Proposal not found');
-    }
-
-    if (proposal.status === ProposalStatus.ACCEPTED) {
-      throw new ValidationError('Cannot delete accepted proposal');
-    }
-
-    // Soft delete
-    await prisma.proposal.update({
-      where: { id },
-      data: {
-        deletedAt: new Date(),
-        deletedBy: userId,
-      }
-    });
-  }
-
   // Pipeline Analytics
-  async getPipelineAnalytics(filter: { teamId?: string; ownerId?: string; dateFrom?: Date | string; dateTo?: Date | string }) {
+  async getPipelineAnalytics(filter: { salesTeamId?: string; accountManagerId?: string; dateFrom?: Date | string; dateTo?: Date | string }) {
     const where: Prisma.OpportunityWhereInput = {
       deletedAt: null,
     };
 
-    if (filter.teamId) {
-      where.teamId = filter.teamId;
+    if (filter.salesTeamId) {
+      where.salesTeamId = filter.salesTeamId;
     }
 
-    if (filter.ownerId) {
-      where.ownerId = filter.ownerId;
+    if (filter.accountManagerId) {
+      where.accountManagerId = filter.accountManagerId;
     }
 
     if (filter.dateFrom || filter.dateTo) {

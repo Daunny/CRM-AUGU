@@ -1,4 +1,4 @@
-import { Prisma, LeadSource, LeadStatus, AssignmentStatus } from '@prisma/client';
+import { Prisma, LeadSource, LeadStatus, AssignmentStatus, ActivityType, EntityType } from '@prisma/client';
 import prisma from '../config/database';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
 
@@ -364,7 +364,7 @@ export class LeadService {
   }
 
   // Lead Assignment
-  async assignLead(input: LeadAssignmentInput, userId: string) {
+  async assignLead(input: LeadAssignmentInput, _userId: string) {
     const lead = await prisma.lead.findUnique({
       where: { id: input.leadId }
     });
@@ -517,8 +517,7 @@ export class LeadService {
         data: {
           ...input.opportunityData,
           companyId,
-          ownerId: input.opportunityData.assignedToId || lead.assignedToId || userId,
-          teamId: input.opportunityData.assignedTeamId || lead.assignedTeamId,
+          accountManagerId: input.opportunityData.assignedToId || lead.assignedToId || userId,
           createdBy: userId,
           updatedBy: userId,
         }
@@ -539,15 +538,15 @@ export class LeadService {
       // Create activity log
       await tx.activity.create({
         data: {
-          type: 'LEAD_CONVERSION',
+          activityType: ActivityType.CALL,
+          entityType: EntityType.COMPANY,
+          entityId: companyId,
           subject: `Lead ${lead.code} converted to opportunity`,
           description: `Lead ${lead.companyName} has been converted to opportunity ${opportunity.code}`,
           companyId,
           opportunityId: opportunity.id,
-          performedBy: userId,
-          activityDate: new Date(),
-          createdBy: userId,
-          updatedBy: userId,
+          userId,
+          startTime: new Date(),
         }
       });
 

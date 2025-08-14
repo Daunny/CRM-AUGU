@@ -24,7 +24,7 @@ export const errorHandler = (
 
   // Handle Prisma errors
   if (err.name === 'PrismaClientKnownRequestError') {
-    const prismaError = err as any;
+    const prismaError = err as { code?: string; meta?: { target?: string[] } };
     switch (prismaError.code) {
       case 'P2002':
         statusCode = 409;

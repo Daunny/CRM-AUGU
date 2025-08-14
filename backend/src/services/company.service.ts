@@ -57,13 +57,11 @@ interface CreateContactInput {
   phone?: string;
   mobile?: string;
   isPrimary?: boolean;
-  birthDate?: Date | string;
+  birthday?: Date | string;
   preferredContactMethod?: string;
-  newsletter?: boolean;
   notes?: string;
-  customFields?: any;
-  userId?: string;
-  branchId?: string;
+  linkedinUrl?: string;
+  branchId: string;
 }
 
 interface UpdateContactInput extends Partial<CreateContactInput> {}
@@ -489,9 +487,9 @@ export class CompanyService {
 
   // Contact CRUD with optimization
   async createContact(input: CreateContactInput, userId: string) {
-    // Convert birthDate string to Date if needed
-    if (input.birthDate && typeof input.birthDate === 'string') {
-      input.birthDate = new Date(input.birthDate);
+    // Convert birthday string to Date if needed
+    if (input.birthday && typeof input.birthday === 'string') {
+      input.birthday = new Date(input.birthday);
     }
 
     const contact = await prisma.contact.create({
@@ -506,8 +504,7 @@ export class CompanyService {
           include: {
             company: true,
           }
-        },
-        user: true,
+        }
       })
     });
 
@@ -519,21 +516,23 @@ export class CompanyService {
     return contact;
   }
 
-  async getContacts(filter: { branchId?: string; userId?: string; search?: string }, page: number = 1, limit: number = 20): Promise<PaginatedResult<any>> {
-    // Try cache first
-    const cached = await cache.getQueryCache<PaginatedResult<any>>('Contact', { filter, page, limit });
-    if (cached) {
-      return cached;
+  async getContacts(filter: { branchId?: string; search?: string }, page: number = 1, limit: number = 20) {
+    const where: any = {
+      deletedAt: null,
+    };
+
+    if (filter.branchId) {
+      where.branchId = filter.branchId;
     }
 
-    // Build optimized where clause
-    const where = QueryOptimizer.buildWhereClause({
-      branchId: filter.branchId,
-      userId: filter.userId,
-      search: filter.search,
-    });
+    if (filter.search) {
+      where.OR = [
+        { firstName: { contains: filter.search, mode: 'insensitive' } },
+        { lastName: { contains: filter.search, mode: 'insensitive' } },
+        { email: { contains: filter.search, mode: 'insensitive' } },
+      ];
+    }
 
-    // Get pagination params
     const paginationParams = QueryOptimizer.getPaginationParams({ page, limit });
 
     const [contacts, total] = await Promise.all([
@@ -545,8 +544,7 @@ export class CompanyService {
             include: {
               company: true,
             }
-          },
-          user: true,
+          }
         }),
         orderBy: [
           { isPrimary: 'desc' },
@@ -588,11 +586,17 @@ export class CompanyService {
       where: { id },
       include: QueryOptimizer.optimizeIncludes({
         branch: {
-          include: {
-            company: true,
+          select: {
+            id: true,
+            name: true,
+            company: {
+              select: {
+                id: true,
+                name: true,
+              }
+            }
           }
         },
-        user: true,
         activities: {
           take: 5,
           orderBy: { createdAt: 'desc' },
@@ -619,9 +623,9 @@ export class CompanyService {
       throw new NotFoundError('Contact not found');
     }
 
-    // Convert birthDate string to Date if needed
-    if (input.birthDate && typeof input.birthDate === 'string') {
-      input.birthDate = new Date(input.birthDate);
+    // Convert birthday string to Date if needed
+    if (input.birthday && typeof input.birthday === 'string') {
+      input.birthday = new Date(input.birthday);
     }
 
     const contact = await prisma.contact.update({
@@ -635,8 +639,7 @@ export class CompanyService {
           include: {
             company: true,
           }
-        },
-        user: true,
+        }
       })
     });
 

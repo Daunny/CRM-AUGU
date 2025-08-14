@@ -10,6 +10,7 @@ import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 // Import routes
 import authRoutes from './routes/auth.routes';
 import companyRoutes from './routes/company.routes';
+import companyAnalyticsRoutes from './routes/company-analytics.routes';
 import leadRoutes from './routes/lead.routes';
 import opportunityRoutes from './routes/opportunity.routes';
 // import projectRoutes from './routes/project.routes';
@@ -72,6 +73,7 @@ app.get('/api/health', (_req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRoutes);
+app.use('/api/company-analytics', companyAnalyticsRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/opportunities', opportunityRoutes);
 // app.use('/api/projects', projectRoutes);

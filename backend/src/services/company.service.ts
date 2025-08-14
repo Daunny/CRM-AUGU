@@ -1,4 +1,4 @@
-import { CompanySize, CustomerTier, CustomerStatus, BranchType } from '@prisma/client';
+import { CompanySize, CustomerTier, CustomerStatus, BranchType, Prisma } from '@prisma/client';
 import prisma from '../config/database';
 import { NotFoundError, ConflictError } from '../utils/errors';
 import { QueryOptimizer, PaginatedResult } from '../utils/query-optimizer';
@@ -316,9 +316,9 @@ export class CompanyService {
     }
 
     // Check if company has related records
-    const hasRelatedRecords = 
-      company._count.branches > 0 || 
-      company._count.opportunities > 0 || 
+    const hasRelatedRecords =
+      company._count.branches > 0 ||
+      company._count.opportunities > 0 ||
       company._count.projects > 0;
 
     if (hasRelatedRecords) {
@@ -504,7 +504,8 @@ export class CompanyService {
           include: {
             company: true,
           }
-        }
+        },
+        user: true,
       })
     });
 
@@ -516,23 +517,21 @@ export class CompanyService {
     return contact;
   }
 
-  async getContacts(filter: { branchId?: string; search?: string }, page: number = 1, limit: number = 20) {
-    const where: any = {
-      deletedAt: null,
-    };
-
-    if (filter.branchId) {
-      where.branchId = filter.branchId;
+  async getContacts(filter: { branchId?: string; userId?: string; search?: string }, page: number = 1, limit: number = 20): Promise<PaginatedResult<any>> {
+    // Try cache first
+    const cached = await cache.getQueryCache<PaginatedResult<any>>('Contact', { filter, page, limit });
+    if (cached) {
+      return cached;
     }
 
-    if (filter.search) {
-      where.OR = [
-        { firstName: { contains: filter.search, mode: 'insensitive' } },
-        { lastName: { contains: filter.search, mode: 'insensitive' } },
-        { email: { contains: filter.search, mode: 'insensitive' } },
-      ];
-    }
+    // Build optimized where clause
+    const where = QueryOptimizer.buildWhereClause({
+      branchId: filter.branchId,
+      userId: filter.userId,
+      search: filter.search,
+    });
 
+    // Get pagination params
     const paginationParams = QueryOptimizer.getPaginationParams({ page, limit });
 
     const [contacts, total] = await Promise.all([
@@ -544,7 +543,8 @@ export class CompanyService {
             include: {
               company: true,
             }
-          }
+          },
+          user: true,
         }),
         orderBy: [
           { isPrimary: 'desc' },
@@ -586,17 +586,11 @@ export class CompanyService {
       where: { id },
       include: QueryOptimizer.optimizeIncludes({
         branch: {
-          select: {
-            id: true,
-            name: true,
-            company: {
-              select: {
-                id: true,
-                name: true,
-              }
-            }
+          include: {
+            company: true,
           }
         },
+        user: true,
         activities: {
           take: 5,
           orderBy: { createdAt: 'desc' },
@@ -639,7 +633,8 @@ export class CompanyService {
           include: {
             company: true,
           }
-        }
+        },
+        user: true,
       })
     });
 
@@ -685,7 +680,7 @@ export class CompanyService {
       companies,
       async (batch) => {
         return prisma.$transaction(
-          batch.map(company => 
+          batch.map(company =>
             prisma.company.create({
               data: {
                 ...company,

@@ -15,6 +15,24 @@ import {
   getMilestones,
   updateMilestone,
   deleteMilestone,
+  createProjectRisk,
+  updateProjectRisk,
+  createProjectBudget,
+  updateProjectBudget,
+  allocateResource,
+  updateResourceAllocation,
+  releaseResource,
+  createDeliverable,
+  updateDeliverable,
+  addProjectMember,
+  getProjectMembers,
+  removeProjectMember,
+  createSession,
+  getSessions,
+  updateSession,
+  createClass,
+  getClasses,
+  updateClass,
 } from '../controllers/project.controller';
 
 const router = Router();
@@ -41,5 +59,37 @@ router.post('/:projectId/milestones', createMilestone);
 router.get('/:projectId/milestones', getMilestones);
 router.put('/milestones/:id', updateMilestone);
 router.delete('/milestones/:id', deleteMilestone);
+
+// Risk Management routes
+router.post('/:projectId/risks', createProjectRisk);
+router.put('/risks/:id', updateProjectRisk);
+
+// Budget Management routes
+router.post('/:projectId/budgets', createProjectBudget);
+router.put('/budgets/:id', updateProjectBudget);
+
+// Resource Management routes
+router.post('/:projectId/resources', allocateResource);
+router.put('/resources/:id', updateResourceAllocation);
+router.delete('/resources/:id', releaseResource);
+
+// Deliverables Management routes
+router.post('/:projectId/deliverables', createDeliverable);
+router.put('/deliverables/:id', updateDeliverable);
+
+// Project Members routes
+router.post('/members', addProjectMember);
+router.get('/:projectId/members', getProjectMembers);
+router.delete('/:projectId/members/:userId', removeProjectMember);
+
+// Training Sessions routes
+router.post('/sessions', createSession);
+router.get('/:projectId/sessions', getSessions);
+router.put('/sessions/:id', updateSession);
+
+// Training Classes routes
+router.post('/classes', createClass);
+router.get('/sessions/:sessionId/classes', getClasses);
+router.put('/classes/:id', updateClass);
 
 export default router;

@@ -350,3 +350,268 @@ export const removeProjectMember = async (
     next(error);
   }
 };
+
+// Milestone Controllers
+export const createMilestone = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { projectId } = req.params;
+    const milestone = await projectService.createMilestone(
+      projectId,
+      req.body,
+      req.user!.userId
+    );
+
+    res.status(201).json({
+      success: true,
+      data: milestone,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateMilestone = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const milestone = await projectService.updateMilestone(
+      id,
+      req.body,
+      req.user!.userId
+    );
+
+    res.json({
+      success: true,
+      data: milestone,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteMilestone = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    await projectService.deleteMilestone(id);
+
+    res.json({
+      success: true,
+      message: 'Milestone deleted successfully',
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Risk Management Controllers
+export const createProjectRisk = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { projectId } = req.params;
+    const risk = await projectService.createProjectRisk(projectId, req.body);
+
+    res.status(201).json({
+      success: true,
+      data: risk,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProjectRisk = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const risk = await projectService.updateProjectRisk(id, req.body);
+
+    res.json({
+      success: true,
+      data: risk,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Budget Management Controllers
+export const createProjectBudget = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { projectId } = req.params;
+    const budget = await projectService.createProjectBudget(projectId, req.body);
+
+    res.status(201).json({
+      success: true,
+      data: budget,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProjectBudget = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const budget = await projectService.updateProjectBudget(id, req.body);
+
+    res.json({
+      success: true,
+      data: budget,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Resource Management Controllers
+export const allocateResource = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { projectId } = req.params;
+    const resource = await projectService.allocateResource(projectId, req.body);
+
+    res.status(201).json({
+      success: true,
+      data: resource,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateResourceAllocation = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const resource = await projectService.updateResourceAllocation(id, req.body);
+
+    res.json({
+      success: true,
+      data: resource,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const releaseResource = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const resource = await projectService.releaseResource(id);
+
+    res.json({
+      success: true,
+      data: resource,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Deliverables Management Controllers
+export const createDeliverable = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { projectId } = req.params;
+    const deliverable = await projectService.createDeliverable(projectId, req.body);
+
+    res.status(201).json({
+      success: true,
+      data: deliverable,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateDeliverable = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const deliverable = await projectService.updateDeliverable(id, req.body);
+
+    res.json({
+      success: true,
+      data: deliverable,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

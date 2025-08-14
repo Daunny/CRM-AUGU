@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { leadService } from '../services/lead.service';
 import { AuthRequest } from '../middlewares/auth';
-import { LeadFilter } from '../types/common.types';
+import { LeadStatus } from '@prisma/client';
 
 // Lead Controllers
 export const createLead = async (
@@ -46,10 +46,10 @@ export const getLeads = async (
       dateTo,
     } = req.query;
 
-    const filter: LeadFilter = {
+    const filter = {
       search: search as string,
-      status: status as string,
-      source: source as string,
+      status: status as LeadStatus,
+      source: source as any,
       assignedToId: assignedToId as string,
       assignedTeamId: assignedTeamId as string,
       bantScore: bantScore ? parseInt(bantScore as string) : undefined,

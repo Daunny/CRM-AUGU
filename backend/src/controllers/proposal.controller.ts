@@ -146,6 +146,28 @@ export const updateProposalItems = async (
   }
 };
 
+// Check required approvers before submission
+export const checkRequiredApprovers = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const result = await proposalService.checkRequiredApprovers(id);
+
+    res.json({
+      success: true,
+      data: result,
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Submit proposal for approval
 export const submitForApproval = async (
   req: AuthRequest,

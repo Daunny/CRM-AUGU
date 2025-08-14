@@ -1,35 +1,119 @@
-import { Prisma, ProjectStatus, ProjectType, SessionStatus, ClassStatus } from '@prisma/client';
+import { 
+  Prisma, 
+  ProjectStatus, 
+  ProjectType, 
+  ProjectPhase,
+  ProjectHealth,
+  SessionStatus, 
+  ClassStatus,
+  MilestoneStatus,
+  DeliverableType,
+  DeliverableStatus,
+  RiskCategory,
+  RiskLevel,
+  RiskStatus,
+  BudgetCategory,
+  ResourceType,
+  ResourceStatus,
+  Priority
+} from '@prisma/client';
 import prisma from '../config/database';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
+import { CacheService } from './cache.service';
+import { EmailService } from './email.service';
+
+const cacheService = new CacheService();
+const emailService = new EmailService();
 
 interface CreateProjectInput {
-  code: string;
+  code?: string;
   name: string;
   description?: string;
-  opportunityId?: string;
+  type?: ProjectType;
   companyId: string;
   branchId?: string;
-  projectType?: ProjectType;
+  opportunityId?: string;
+  contractId?: string;
+  status?: ProjectStatus;
+  phase?: ProjectPhase;
+  health?: ProjectHealth;
+  priority?: Priority;
   startDate?: Date | string;
   endDate?: Date | string;
-  contractAmount?: number;
-  currency?: string;
+  budget?: number;
+  revenue?: number;
   projectManagerId?: string;
-  teamId?: string;
-  objectives?: string;
-  deliverables?: string;
-  constraints?: string;
-  assumptions?: string;
-  risks?: string;
-  customFields?: any;
+  coordinatorId?: string;
+  operatorId?: string;
+  milestones?: CreateMilestoneInput[];
+}
+
+interface CreateMilestoneInput {
+  name: string;
+  description?: string;
+  dueDate: Date | string;
+  priority?: Priority;
+  dependsOn?: string[];
+  lagDays?: number;
+}
+
+interface UpdateMilestoneInput {
+  name?: string;
+  description?: string;
+  dueDate?: Date | string;
+  status?: MilestoneStatus;
+  progress?: number;
+  priority?: Priority;
+  completedAt?: Date | string;
+}
+
+interface CreateProjectRiskInput {
+  title: string;
+  description?: string;
+  category: RiskCategory;
+  probability: RiskLevel;
+  impact: RiskLevel;
+  mitigation?: string;
+  owner?: string;
+}
+
+interface CreateProjectBudgetInput {
+  category: BudgetCategory;
+  description?: string;
+  plannedAmount: number;
+  actualAmount?: number;
+  currency?: string;
+}
+
+interface CreateProjectResourceInput {
+  resourceType: ResourceType;
+  name: string;
+  description?: string;
+  quantity?: number;
+  unit?: string;
+  cost?: number;
+  assignedFrom?: Date | string;
+  assignedTo?: Date | string;
+}
+
+interface CreateProjectDeliverableInput {
+  milestoneId?: string;
+  name: string;
+  description?: string;
+  type: DeliverableType;
+  dueDate?: Date | string;
 }
 
 interface UpdateProjectInput extends Partial<CreateProjectInput> {
   status?: ProjectStatus;
+  phase?: ProjectPhase;
+  health?: ProjectHealth;
   actualStartDate?: Date | string;
   actualEndDate?: Date | string;
-  actualAmount?: number;
-  completionRate?: number;
+  actualCost?: number;
+  progress?: number;
+  margin?: number;
+  marginPercent?: number;
 }
 
 interface ProjectFilter {
@@ -99,40 +183,68 @@ interface AddProjectMemberInput {
 export class ProjectService {
   // Project CRUD
   async createProject(input: CreateProjectInput, userId: string) {
-    // Check if code already exists
-    const existing = await prisma.project.findUnique({
-      where: { code: input.code }
-    });
+    return await prisma.$transaction(async (tx) => {
+      // Generate project code if not provided
+      let code = input.code;
+      if (!code) {
+        const lastProject = await tx.project.findFirst({
+          orderBy: { code: 'desc' },
+        });
+        const nextNumber = lastProject 
+          ? parseInt(lastProject.code.replace('PRJ-', '')) + 1 
+          : 1;
+        code = `PRJ-${String(nextNumber).padStart(6, '0')}`;
+      } else {
+        // Check if code already exists
+        const existing = await tx.project.findUnique({
+          where: { code }
+        });
+        if (existing) {
+          throw new ConflictError('Project code already exists');
+        }
+      }
 
-    if (existing) {
-      throw new ConflictError('Project code already exists');
-    }
+      // Verify company exists
+      const company = await tx.company.findUnique({
+        where: { id: input.companyId }
+      });
 
-    // Verify company exists
-    const company = await prisma.company.findUnique({
-      where: { id: input.companyId }
-    });
+      if (!company) {
+        throw new NotFoundError('Company not found');
+      }
 
-    if (!company) {
-      throw new NotFoundError('Company not found');
-    }
+      // Convert dates if needed
+      if (input.startDate && typeof input.startDate === 'string') {
+        input.startDate = new Date(input.startDate);
+      }
+      if (input.endDate && typeof input.endDate === 'string') {
+        input.endDate = new Date(input.endDate);
+      }
 
-    // Convert dates if needed
-    if (input.startDate && typeof input.startDate === 'string') {
-      input.startDate = new Date(input.startDate);
-    }
-    if (input.endDate && typeof input.endDate === 'string') {
-      input.endDate = new Date(input.endDate);
-    }
-
-    const project = await prisma.project.create({
-      data: {
-        ...input,
-        status: ProjectStatus.PLANNING,
-        projectManagerId: input.projectManagerId || userId,
-        createdBy: userId,
-        updatedBy: userId,
-      },
+      const project = await tx.project.create({
+        data: {
+          code,
+          name: input.name,
+          description: input.description,
+          type: input.type,
+          companyId: input.companyId,
+          branchId: input.branchId,
+          opportunityId: input.opportunityId,
+          contractId: input.contractId,
+          status: input.status || ProjectStatus.PLANNING,
+          phase: input.phase || 'INITIATION',
+          health: input.health || 'GREEN',
+          priority: input.priority || 'MEDIUM',
+          startDate: input.startDate as Date,
+          endDate: input.endDate as Date,
+          budget: input.budget,
+          revenue: input.revenue,
+          projectManagerId: input.projectManagerId || userId,
+          coordinatorId: input.coordinatorId,
+          operatorId: input.operatorId,
+          createdBy: userId,
+          updatedBy: userId,
+        },
       include: {
         company: {
           select: {
@@ -171,50 +283,62 @@ export class ProjectService {
       }
     });
 
-    // Add project manager as a member
-    if (input.projectManagerId || userId) {
-      await prisma.projectMember.create({
-        data: {
-          projectId: project.id,
-          userId: input.projectManagerId || userId,
-          role: 'PROJECT_MANAGER',
-          responsibilities: 'Overall project management and delivery',
-          startDate: input.startDate as Date,
-          createdBy: userId,
-          updatedBy: userId,
-        }
-      });
-    }
-
-    // Update opportunity to WON if linked
-    if (input.opportunityId) {
-      await prisma.opportunity.update({
-        where: { id: input.opportunityId },
-        data: {
-          stage: 'CLOSED_WON',
-          closedAt: new Date(),
-          wonAmount: input.contractAmount,
-          updatedBy: userId,
-        }
-      });
-    }
-
-    // Create activity log
-    await prisma.activity.create({
-      data: {
-        type: 'PROJECT_CREATED',
-        subject: `Project ${project.code} created`,
-        description: `New project "${project.name}" created for ${company.name}`,
-        companyId: input.companyId,
-        projectId: project.id,
-        performedBy: userId,
-        activityDate: new Date(),
-        createdBy: userId,
-        updatedBy: userId,
+      // Add project manager as a member
+      if (input.projectManagerId || userId) {
+        await tx.projectMember.create({
+          data: {
+            projectId: project.id,
+            userId: input.projectManagerId || userId,
+            role: 'PROJECT_MANAGER',
+            allocation: 100,
+            startDate: input.startDate as Date,
+            endDate: input.endDate as Date,
+          }
+        });
       }
-    });
 
-    return project;
+      // Create initial milestones if provided
+      if (input.milestones && input.milestones.length > 0) {
+        await tx.milestone.createMany({
+          data: input.milestones.map(milestone => ({
+            projectId: project.id,
+            name: milestone.name,
+            description: milestone.description,
+            dueDate: typeof milestone.dueDate === 'string' 
+              ? new Date(milestone.dueDate) 
+              : milestone.dueDate,
+            priority: milestone.priority || 'MEDIUM',
+            createdBy: userId,
+          })),
+        });
+      }
+
+      // Update opportunity to WON if linked
+      if (input.opportunityId) {
+        await tx.opportunity.update({
+          where: { id: input.opportunityId },
+          data: {
+            stage: 'CLOSED_WON',
+            closedAt: new Date(),
+            wonAmount: input.revenue,
+            updatedBy: userId,
+          }
+        });
+      }
+
+      // Send notification to project manager
+      if (input.projectManagerId) {
+        await emailService.sendProjectAssignmentNotification(
+          input.projectManagerId,
+          project
+        );
+      }
+
+      // Invalidate cache
+      await cacheService.invalidate('projects:*');
+
+      return project;
+    });
   }
 
   async getProjects(filter: ProjectFilter, page: number = 1, limit: number = 20) {
@@ -911,6 +1035,374 @@ export class ProjectService {
     });
 
     return { success: true, message: 'Project member removed successfully' };
+  }
+
+  // Milestone Management
+  async createMilestone(projectId: string, input: CreateMilestoneInput, userId: string) {
+    const milestone = await prisma.milestone.create({
+      data: {
+        projectId,
+        name: input.name,
+        description: input.description,
+        dueDate: typeof input.dueDate === 'string' 
+          ? new Date(input.dueDate) 
+          : input.dueDate,
+        priority: input.priority || 'MEDIUM',
+        createdBy: userId,
+      },
+      include: {
+        project: true,
+      },
+    });
+
+    // Create dependencies if provided
+    if (input.dependsOn && input.dependsOn.length > 0) {
+      await prisma.milestoneDependency.createMany({
+        data: input.dependsOn.map(depId => ({
+          milestoneId: milestone.id,
+          dependsOnId: depId,
+          lagDays: input.lagDays || 0,
+        })),
+      });
+    }
+
+    await cacheService.invalidate(`project:${projectId}`);
+    
+    return milestone;
+  }
+
+  async updateMilestone(id: string, input: UpdateMilestoneInput, userId: string) {
+    const milestone = await prisma.milestone.update({
+      where: { id },
+      data: {
+        ...input,
+        dueDate: input.dueDate && typeof input.dueDate === 'string' 
+          ? new Date(input.dueDate) 
+          : input.dueDate,
+        completedAt: input.completedAt && typeof input.completedAt === 'string'
+          ? new Date(input.completedAt)
+          : input.completedAt,
+        updatedBy: userId,
+      },
+      include: {
+        project: true,
+        deliverables: true,
+      },
+    });
+
+    // Update project progress if milestone completed
+    if (input.status === 'COMPLETED') {
+      await this.updateProjectProgress(milestone.projectId);
+    }
+
+    await cacheService.invalidate(`project:${milestone.projectId}`);
+    
+    return milestone;
+  }
+
+  async deleteMilestone(id: string) {
+    const milestone = await prisma.milestone.delete({
+      where: { id },
+    });
+
+    await cacheService.invalidate(`project:${milestone.projectId}`);
+    
+    return milestone;
+  }
+
+  // Risk Management
+  async createProjectRisk(projectId: string, input: CreateProjectRiskInput) {
+    const risk = await prisma.projectRisk.create({
+      data: {
+        projectId,
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        probability: input.probability,
+        impact: input.impact,
+        score: this.calculateRiskScore(input.probability, input.impact),
+        mitigation: input.mitigation,
+        owner: input.owner,
+      },
+    });
+
+    // Update project health if high risk
+    if (risk.score && risk.score >= 15) {
+      await this.updateProjectHealth(projectId, 'YELLOW');
+    }
+
+    await cacheService.invalidate(`project:${projectId}`);
+    
+    return risk;
+  }
+
+  async updateProjectRisk(id: string, input: any) {
+    const risk = await prisma.projectRisk.update({
+      where: { id },
+      data: {
+        ...input,
+        score: input.probability && input.impact 
+          ? this.calculateRiskScore(input.probability, input.impact)
+          : undefined,
+      },
+    });
+
+    await cacheService.invalidate(`project:${risk.projectId}`);
+    
+    return risk;
+  }
+
+  // Budget Management
+  async createProjectBudget(projectId: string, input: CreateProjectBudgetInput) {
+    const budget = await prisma.projectBudget.create({
+      data: {
+        projectId,
+        category: input.category,
+        description: input.description,
+        plannedAmount: input.plannedAmount,
+        actualAmount: input.actualAmount || 0,
+        currency: input.currency || 'KRW',
+      },
+    });
+
+    // Update project total budget
+    await this.updateProjectTotalBudget(projectId);
+
+    await cacheService.invalidate(`project:${projectId}`);
+    
+    return budget;
+  }
+
+  async updateProjectBudget(id: string, input: any) {
+    const budget = await prisma.projectBudget.update({
+      where: { id },
+      data: input,
+    });
+
+    // Update project total budget and check overrun
+    await this.updateProjectTotalBudget(budget.projectId);
+    await this.checkBudgetOverrun(budget.projectId);
+
+    await cacheService.invalidate(`project:${budget.projectId}`);
+    
+    return budget;
+  }
+
+  // Resource Management
+  async allocateResource(projectId: string, input: CreateProjectResourceInput) {
+    const resource = await prisma.projectResource.create({
+      data: {
+        projectId,
+        resourceType: input.resourceType,
+        name: input.name,
+        description: input.description,
+        quantity: input.quantity || 1,
+        unit: input.unit,
+        cost: input.cost,
+        status: 'ALLOCATED',
+        assignedFrom: input.assignedFrom && typeof input.assignedFrom === 'string'
+          ? new Date(input.assignedFrom)
+          : input.assignedFrom,
+        assignedTo: input.assignedTo && typeof input.assignedTo === 'string'
+          ? new Date(input.assignedTo)
+          : input.assignedTo,
+      },
+    });
+
+    await cacheService.invalidate(`project:${projectId}`);
+    
+    return resource;
+  }
+
+  async updateResourceAllocation(id: string, input: any) {
+    const resource = await prisma.projectResource.update({
+      where: { id },
+      data: input,
+    });
+
+    await cacheService.invalidate(`project:${resource.projectId}`);
+    
+    return resource;
+  }
+
+  async releaseResource(id: string) {
+    const resource = await prisma.projectResource.update({
+      where: { id },
+      data: {
+        status: 'AVAILABLE',
+        assignedTo: new Date(),
+      },
+    });
+
+    await cacheService.invalidate(`project:${resource.projectId}`);
+    
+    return resource;
+  }
+
+  // Deliverables Management
+  async createDeliverable(projectId: string, input: CreateProjectDeliverableInput) {
+    const deliverable = await prisma.projectDeliverable.create({
+      data: {
+        projectId,
+        milestoneId: input.milestoneId,
+        name: input.name,
+        description: input.description,
+        type: input.type,
+        dueDate: input.dueDate && typeof input.dueDate === 'string'
+          ? new Date(input.dueDate)
+          : input.dueDate,
+      },
+    });
+
+    await cacheService.invalidate(`project:${projectId}`);
+    
+    return deliverable;
+  }
+
+  async updateDeliverable(id: string, input: any) {
+    const deliverable = await prisma.projectDeliverable.update({
+      where: { id },
+      data: input,
+    });
+
+    // Update milestone progress if deliverable is delivered
+    if (input.status === 'DELIVERED' && deliverable.milestoneId) {
+      await this.updateMilestoneProgress(deliverable.milestoneId);
+    }
+
+    await cacheService.invalidate(`project:${deliverable.projectId}`);
+    
+    return deliverable;
+  }
+
+  // Helper Methods
+  private calculateRiskScore(probability: string, impact: string): number {
+    const levelScores: any = {
+      VERY_LOW: 1,
+      LOW: 2,
+      MEDIUM: 3,
+      HIGH: 4,
+      VERY_HIGH: 5,
+    };
+
+    return levelScores[probability] * levelScores[impact];
+  }
+
+  private async updateProjectHealth(projectId: string, health: string) {
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { health: health as any },
+    });
+  }
+
+  private async updateProjectProgress(projectId: string) {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        milestones: true,
+        tasks: true,
+      },
+    });
+
+    if (!project) return;
+
+    const completedMilestones = project.milestones.filter(
+      m => m.status === 'COMPLETED'
+    ).length;
+    const totalMilestones = project.milestones.length;
+    
+    const completedTasks = project.tasks.filter(
+      t => t.status === 'COMPLETED'
+    ).length;
+    const totalTasks = project.tasks.length;
+
+    const milestoneProgress = totalMilestones > 0 
+      ? (completedMilestones / totalMilestones) * 100
+      : 0;
+    
+    const taskProgress = totalTasks > 0 
+      ? (completedTasks / totalTasks) * 100
+      : 0;
+
+    const overallProgress = Math.round(
+      (milestoneProgress * 0.6) + (taskProgress * 0.4)
+    );
+
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { progress: overallProgress },
+    });
+  }
+
+  private async updateMilestoneProgress(milestoneId: string) {
+    const milestone = await prisma.milestone.findUnique({
+      where: { id: milestoneId },
+      include: {
+        deliverables: true,
+      },
+    });
+
+    if (!milestone) return;
+
+    const completedDeliverables = milestone.deliverables.filter(
+      d => d.status === 'DELIVERED'
+    ).length;
+    const totalDeliverables = milestone.deliverables.length;
+    
+    const progress = totalDeliverables > 0 
+      ? Math.round((completedDeliverables / totalDeliverables) * 100)
+      : 0;
+
+    await prisma.milestone.update({
+      where: { id: milestoneId },
+      data: { 
+        progress,
+        status: progress === 100 ? 'COMPLETED' : 'IN_PROGRESS',
+        completedAt: progress === 100 ? new Date() : null,
+      },
+    });
+  }
+
+  private async updateProjectTotalBudget(projectId: string) {
+    const budgets = await prisma.projectBudget.findMany({
+      where: { projectId },
+    });
+
+    const totalPlanned = budgets.reduce((sum, b) => sum + b.plannedAmount, 0);
+    const totalActual = budgets.reduce((sum, b) => sum + b.actualAmount, 0);
+
+    await prisma.project.update({
+      where: { id: projectId },
+      data: {
+        budget: totalPlanned,
+        actualCost: totalActual,
+      },
+    });
+  }
+
+  private async checkBudgetOverrun(projectId: string) {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) return;
+
+    if (project.actualCost && project.budget && project.actualCost > project.budget) {
+      // Update project health to yellow or red based on overrun percentage
+      const overrunPercent = ((project.actualCost - project.budget) / project.budget) * 100;
+      const health = overrunPercent > 20 ? 'RED' : 'YELLOW';
+      
+      await this.updateProjectHealth(projectId, health);
+      
+      // Send notification to project manager
+      if (project.projectManagerId) {
+        await emailService.sendBudgetOverrunAlert(
+          project.projectManagerId,
+          project,
+          overrunPercent
+        );
+      }
+    }
   }
 }
 

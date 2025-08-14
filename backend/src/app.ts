@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { config } from './config/env';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 
@@ -14,6 +15,7 @@ import leadRoutes from './routes/lead.routes';
 import opportunityRoutes from './routes/opportunity.routes';
 import proposalRoutes from './routes/proposal.routes';
 import salesPipelineRoutes from './routes/sales-pipeline.routes';
+import taskRoutes from './routes/task.routes';
 // import projectRoutes from './routes/project.routes';
 // import meetingRoutes from './routes/meeting.routes';
 // import kpiRoutes from './routes/kpi.routes';
@@ -45,6 +47,9 @@ const limiter = rateLimit({
 });
 
 app.use('/api', limiter);
+
+// Serve static files (uploaded files)
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -78,6 +83,7 @@ app.use('/api/leads', leadRoutes);
 app.use('/api/opportunities', opportunityRoutes);
 app.use('/api/proposals', proposalRoutes);
 app.use('/api/sales-pipeline', salesPipelineRoutes);
+app.use('/api/tasks', taskRoutes);
 // app.use('/api/projects', projectRoutes);
 // app.use('/api/meetings', meetingRoutes);
 // app.use('/api/kpi', kpiRoutes);

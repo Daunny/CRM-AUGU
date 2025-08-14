@@ -478,39 +478,3 @@ export enum CustomerTier {
   BRONZE = 'BRONZE',
   BASIC = 'BASIC'
 }
-
-// Export all types
-export default {
-  // Re-export all types as a namespace
-  QueryOptions,
-  PaginationParams,
-  PaginatedResponse,
-  BaseFilter,
-  CompanyFilter,
-  LeadFilter,
-  OpportunityFilter,
-  ContactFilter,
-  CreateCompanyDto,
-  UpdateCompanyDto,
-  CreateLeadDto,
-  UpdateLeadDto,
-  CreateOpportunityDto,
-  UpdateOpportunityDto,
-  CreateContactDto,
-  UpdateContactDto,
-  ApiResponse,
-  ServiceResult,
-  CompanyAnalytics,
-  PipelineAnalytics,
-  Customer360View,
-  JwtPayload,
-  AuthenticatedUser,
-  CreateMeetingDto,
-  ActivityLog,
-  AppError,
-  LeadStatus,
-  OpportunityStage,
-  ProjectStatus,
-  UserRole,
-  CustomerTier
-};

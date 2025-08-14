@@ -1,12 +1,10 @@
-import { prisma } from '../config/database';
+import prisma from '../config/database';
 import { AppError } from '../utils/errors';
+import { AuthorizationService } from './authorization.service';
+import { CacheManager, CacheInvalidator } from '../utils/cache-manager';
 import {
-  Proposal,
   ProposalStatus,
-  ProposalItem,
-  ProposalVersion,
-  ProposalApproval,
-  ProposalTemplate,
+  ProposalItemType,
   Prisma,
 } from '@prisma/client';
 
@@ -106,84 +104,115 @@ class ProposalService {
     };
   }
 
-  // Create new proposal
+  // Create new proposal with transaction
   async createProposal(data: CreateProposalDto, userId: string) {
-    // Validate opportunity exists
-    const opportunity = await prisma.opportunity.findUnique({
-      where: { id: data.opportunityId },
-    });
+    return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Validate opportunity exists
+      const opportunity = await tx.opportunity.findUnique({
+        where: { id: data.opportunityId },
+      });
 
-    if (!opportunity) {
-      throw new AppError('Opportunity not found', 404);
-    }
+      if (!opportunity) {
+        throw new AppError('Opportunity not found', 404);
+      }
 
-    // Generate proposal code
-    const code = await this.generateProposalCode();
-
-    // Prepare items with calculations
-    const itemsWithTotals = data.items.map((item, index) => {
-      const itemTotal = item.quantity * item.unitPrice;
-      const itemDiscount = itemTotal * ((item.discountPercent || 0) / 100);
-      const totalPrice = itemTotal - itemDiscount;
-
-      return {
-        sequence: index + 1,
-        itemType: item.itemType,
-        productId: item.productId,
-        name: item.name,
-        description: item.description,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        discountPercent: item.discountPercent || 0,
-        totalPrice,
-      };
-    });
-
-    // Calculate totals
-    const totals = this.calculateTotals(itemsWithTotals, 0, 0);
-
-    // Create proposal with items
-    const proposal = await prisma.proposal.create({
-      data: {
-        code,
-        opportunityId: data.opportunityId,
-        title: data.title,
-        executiveSummary: data.executiveSummary,
-        templateId: data.templateId,
-        validUntil: data.validUntil,
-        subtotal: totals.subtotal,
-        discountPercent: 0,
-        discountAmount: 0,
-        tax: 0,
-        totalAmount: totals.totalAmount,
-        paymentTerms: data.paymentTerms,
-        deliveryTerms: data.deliveryTerms,
-        warrantyTerms: data.warrantyTerms,
-        specialTerms: data.specialTerms,
-        createdBy: userId,
-        updatedBy: userId,
-        items: {
-          create: itemsWithTotals,
-        },
-      },
-      include: {
-        items: {
-          include: {
-            product: true,
+      // Generate proposal code within transaction
+      const date = new Date();
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      
+      const lastProposal = await tx.proposal.findFirst({
+        where: {
+          code: {
+            startsWith: `PROP-${year}${month}`,
           },
         },
-        opportunity: {
-          include: {
-            company: true,
+        orderBy: {
+          code: 'desc',
+        },
+      });
+
+      let sequence = 1;
+      if (lastProposal) {
+        const lastSequence = parseInt(lastProposal.code.split('-')[2]);
+        sequence = lastSequence + 1;
+      }
+
+      const code = `PROP-${year}${month}-${String(sequence).padStart(4, '0')}`;
+
+      // Prepare items with calculations
+      const itemsWithTotals = data.items.map((item, index) => {
+        const itemTotal = item.quantity * item.unitPrice;
+        const itemDiscount = itemTotal * ((item.discountPercent || 0) / 100);
+        const totalPrice = itemTotal - itemDiscount;
+
+        return {
+          sequence: index + 1,
+          itemType: item.itemType as ProposalItemType,
+          productId: item.productId,
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discountPercent: item.discountPercent || 0,
+          totalPrice,
+        };
+      });
+
+      // Calculate totals
+      const totals = this.calculateTotals(itemsWithTotals, 0, 0);
+
+      // Create proposal with items
+      const proposal = await tx.proposal.create({
+        data: {
+          code,
+          opportunityId: data.opportunityId,
+          title: data.title,
+          executiveSummary: data.executiveSummary,
+          templateId: data.templateId,
+          validUntil: data.validUntil,
+          subtotal: totals.subtotal,
+          discountPercent: 0,
+          discountAmount: 0,
+          tax: 0,
+          totalAmount: totals.totalAmount,
+          paymentTerms: data.paymentTerms,
+          deliveryTerms: data.deliveryTerms,
+          warrantyTerms: data.warrantyTerms,
+          specialTerms: data.specialTerms,
+          createdBy: userId,
+          updatedBy: userId,
+          items: {
+            create: itemsWithTotals,
           },
         },
-      },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+          opportunity: {
+            include: {
+              company: true,
+            },
+          },
+        },
+      });
+
+      // Create initial version within the same transaction
+      await tx.proposalVersion.create({
+        data: {
+          proposalId: proposal.id,
+          version: 1,
+          content: proposal as any,
+          changes: 'Initial version',
+          createdBy: userId,
+        },
+      });
+
+      return proposal;
     });
-
-    // Create initial version
-    await this.createVersion(proposal.id, 'Initial version', userId);
-
-    return proposal;
   }
 
   // Get proposals with filters
@@ -254,6 +283,13 @@ class ProposalService {
 
   // Get proposal by ID
   async getProposalById(id: string) {
+    // Try to get from cache first
+    const cacheKey = `proposal:${id}`;
+    const cached = await CacheManager.get(cacheKey, { prefix: 'proposal' });
+    if (cached) {
+      return cached;
+    }
+
     const proposal = await prisma.proposal.findUnique({
       where: { id },
       include: {
@@ -285,6 +321,9 @@ class ProposalService {
     if (!proposal) {
       throw new AppError('Proposal not found', 404);
     }
+
+    // Cache for 30 minutes
+    await CacheManager.set(cacheKey, proposal, { prefix: 'proposal', ttl: 1800 });
 
     return proposal;
   }
@@ -348,17 +387,113 @@ class ProposalService {
     // Create version record
     await this.createVersion(id, 'Updated proposal', userId);
 
+    // Invalidate cache
+    await CacheInvalidator.invalidateProposal(id);
+
     return updatedProposal;
   }
 
-  // Add or update proposal items
+  // Add or update proposal items with transaction
   async updateProposalItems(
     id: string,
     items: CreateProposalItemDto[],
     userId: string
   ) {
+    return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const proposal = await tx.proposal.findUnique({
+        where: { id },
+      });
+
+      if (!proposal) {
+        throw new AppError('Proposal not found', 404);
+      }
+
+      if (proposal.status !== ProposalStatus.DRAFT) {
+        throw new AppError('Only draft proposals can be edited', 400);
+      }
+
+      // Delete existing items in transaction
+      await tx.proposalItem.deleteMany({
+        where: { proposalId: id },
+      });
+
+      // Create new items with calculations
+      const itemsWithTotals = items.map((item, index) => {
+        const itemTotal = item.quantity * item.unitPrice;
+        const itemDiscount = itemTotal * ((item.discountPercent || 0) / 100);
+        const totalPrice = itemTotal - itemDiscount;
+
+        return {
+          proposalId: id,
+          sequence: index + 1,
+          itemType: item.itemType as ProposalItemType,
+          productId: item.productId,
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discountPercent: item.discountPercent || 0,
+          totalPrice,
+        };
+      });
+
+      // Create all items in batch within transaction
+      await tx.proposalItem.createMany({
+        data: itemsWithTotals,
+      });
+
+      // Recalculate totals
+      const totals = this.calculateTotals(
+        itemsWithTotals,
+        proposal.discountPercent,
+        proposal.tax
+      );
+
+      // Update proposal totals and version within transaction
+      const updatedProposal = await tx.proposal.update({
+        where: { id },
+        data: {
+          ...totals,
+          updatedBy: userId,
+          version: {
+            increment: 1,
+          },
+        },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      });
+
+      // Create version record within the same transaction
+      await tx.proposalVersion.create({
+        data: {
+          proposalId: id,
+          version: updatedProposal.version,
+          content: updatedProposal as any,
+          changes: 'Updated items',
+          createdBy: userId,
+        },
+      });
+
+      // Invalidate cache after successful transaction
+      await CacheInvalidator.invalidateProposal(id);
+
+      return updatedProposal;
+    });
+  }
+
+  // Check required approvers before submission
+  async checkRequiredApprovers(id: string) {
     const proposal = await prisma.proposal.findUnique({
       where: { id },
+      select: { 
+        totalAmount: true,
+        status: true,
+      },
     });
 
     if (!proposal) {
@@ -366,68 +501,21 @@ class ProposalService {
     }
 
     if (proposal.status !== ProposalStatus.DRAFT) {
-      throw new AppError('Only draft proposals can be edited', 400);
+      throw new AppError('Only draft proposals can be checked', 400);
     }
 
-    // Delete existing items
-    await prisma.proposalItem.deleteMany({
-      where: { proposalId: id },
-    });
+    // Get required approval levels
+    const levels = AuthorizationService.getRequiredApprovalLevels(proposal.totalAmount);
+    const approvers = await AuthorizationService.getApproversForAmount(proposal.totalAmount);
 
-    // Create new items
-    const itemsWithTotals = items.map((item, index) => {
-      const itemTotal = item.quantity * item.unitPrice;
-      const itemDiscount = itemTotal * ((item.discountPercent || 0) / 100);
-      const totalPrice = itemTotal - itemDiscount;
-
-      return {
-        proposalId: id,
-        sequence: index + 1,
-        itemType: item.itemType,
-        productId: item.productId,
-        name: item.name,
-        description: item.description,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        discountPercent: item.discountPercent || 0,
-        totalPrice,
-      };
-    });
-
-    await prisma.proposalItem.createMany({
-      data: itemsWithTotals,
-    });
-
-    // Recalculate totals
-    const totals = this.calculateTotals(
-      itemsWithTotals,
-      proposal.discountPercent,
-      proposal.tax
-    );
-
-    // Update proposal totals
-    const updatedProposal = await prisma.proposal.update({
-      where: { id },
-      data: {
-        ...totals,
-        updatedBy: userId,
-        version: {
-          increment: 1,
-        },
-      },
-      include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
-      },
-    });
-
-    // Create version record
-    await this.createVersion(id, 'Updated items', userId);
-
-    return updatedProposal;
+    return {
+      totalAmount: proposal.totalAmount,
+      requiredLevels: levels,
+      availableApprovers: approvers,
+      message: approvers.length === 0 
+        ? 'No approvers available for this amount. Please contact admin.'
+        : `This proposal requires ${levels[0].description}`,
+    };
   }
 
   // Submit proposal for approval
@@ -459,7 +547,7 @@ class ProposalService {
     });
 
     // Create approval workflow based on amount
-    const approvalLevels = this.getApprovalLevels(proposal.totalAmount);
+    const approvalLevels = await this.getApprovalLevels(proposal.totalAmount);
     
     // Create approval records
     const approvals = await Promise.all(
@@ -479,6 +567,9 @@ class ProposalService {
 
   // Approve proposal
   async approveProposal(id: string, comments: string | null, userId: string) {
+    // Check authorization
+    await AuthorizationService.validatePermission(userId, 'approve', id);
+
     const approval = await prisma.proposalApproval.findFirst({
       where: {
         proposalId: id,
@@ -532,6 +623,9 @@ class ProposalService {
     comments: string | null,
     userId: string
   ) {
+    // Check authorization
+    await AuthorizationService.validatePermission(userId, 'approve', id);
+
     const approval = await prisma.proposalApproval.findFirst({
       where: {
         proposalId: id,
@@ -681,7 +775,7 @@ class ProposalService {
         createdBy: userId,
         updatedBy: userId,
         items: {
-          create: originalProposal.items.map((item) => ({
+          create: originalProposal.items.map((item: any) => ({
             productId: item.productId,
             sequence: item.sequence,
             itemType: item.itemType,
@@ -733,23 +827,15 @@ class ProposalService {
   }
 
   // Get approval levels based on amount
-  private getApprovalLevels(amount: number) {
-    // TODO: Implement actual approval matrix logic
-    // This is a placeholder implementation
-    const levels = [];
-
-    if (amount > 10000000) {
-      // Over 10M KRW - needs CEO approval
-      levels.push({ level: 1, approverId: 'ceo-user-id' });
-    }
-    if (amount > 5000000) {
-      // Over 5M KRW - needs director approval
-      levels.push({ level: 2, approverId: 'director-user-id' });
-    }
-    if (amount > 1000000) {
-      // Over 1M KRW - needs manager approval
-      levels.push({ level: 3, approverId: 'manager-user-id' });
-    }
+  private async getApprovalLevels(amount: number) {
+    // Use AuthorizationService to get proper approvers based on amount
+    const approverIds = await AuthorizationService.createApprovalWorkflow('', amount);
+    
+    // Create approval level objects with proper hierarchy
+    const levels = approverIds.map((approverId, index) => ({
+      level: index + 1,
+      approverId: approverId,
+    }));
 
     return levels;
   }
@@ -797,7 +883,7 @@ class ProposalService {
   }
 
   // Delete proposal
-  async deleteProposal(id: string, userId: string) {
+  async deleteProposal(id: string, _userId: string) {
     const proposal = await prisma.proposal.findUnique({
       where: { id },
     });

@@ -18,6 +18,6 @@ router.get('/metrics', getPipelineMetrics);
 router.get('/proposals', getProposalAnalytics);
 router.get('/funnel', getFunnelAnalysis);
 router.get('/forecast', getSalesForecast);
-router.get('/team-performance', authorize(['ADMIN', 'MANAGER']), getTeamPerformance);
+router.get('/team-performance', authorize('ADMIN', 'MANAGER'), getTeamPerformance);
 
 export default router;

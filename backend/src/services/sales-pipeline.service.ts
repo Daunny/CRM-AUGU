@@ -1,4 +1,4 @@
-import { prisma } from '../config/database';
+import prisma from '../config/database';
 import { OpportunityStage, ProposalStatus } from '@prisma/client';
 
 interface PipelineFilter {
@@ -126,9 +126,9 @@ class SalesPipelineService {
         averageDealSize: avgDealSize,
         conversionRate,
         winRate,
-        averageSalesCycle,
+        averageSalesCycle: avgSalesCycle,
       },
-      stageDistribution: opportunitiesByStage.map(stage => ({
+      stageDistribution: opportunitiesByStage.map((stage: any) => ({
         stage: stage.stage,
         count: stage._count.id,
         value: stage._sum.amount || 0,
@@ -255,14 +255,14 @@ class SalesPipelineService {
         averageDiscount: proposalMetrics._avg.discountPercent || 0,
         acceptanceRate,
       },
-      statusDistribution: proposalsByStatus.map(status => ({
+      statusDistribution: proposalsByStatus.map((status: any) => ({
         status: status.status,
         count: status._count.id,
         value: status._sum.totalAmount || 0,
         averageDiscount: status._avg.discountPercent || 0,
       })),
       templatePerformance: await Promise.all(
-        templatePerformance.map(async (template) => {
+        templatePerformance.map(async (template: any) => {
           const templateData = template.templateId
             ? await prisma.proposalTemplate.findUnique({
                 where: { id: template.templateId },
@@ -380,7 +380,7 @@ class SalesPipelineService {
     // Group by month
     const forecastByMonth: Record<string, any> = {};
 
-    opportunities.forEach(opp => {
+    opportunities.forEach((opp: any) => {
       if (!opp.expectedCloseDate) return;
 
       const monthKey = `${opp.expectedCloseDate.getFullYear()}-${String(opp.expectedCloseDate.getMonth() + 1).padStart(2, '0')}`;
@@ -471,7 +471,7 @@ class SalesPipelineService {
 
     // Get detailed metrics for each manager
     const detailedPerformance = await Promise.all(
-      performanceByManager.map(async (manager) => {
+      performanceByManager.map(async (manager: any) => {
         const managerData = await prisma.user.findUnique({
           where: { id: manager.accountManagerId },
           select: {
@@ -518,7 +518,7 @@ class SalesPipelineService {
     );
 
     return {
-      teamPerformance: detailedPerformance.sort((a, b) => b.totalValue - a.totalValue),
+      teamPerformance: detailedPerformance.sort((a: any, b: any) => b.totalValue - a.totalValue),
     };
   }
 
@@ -562,7 +562,7 @@ class SalesPipelineService {
     // Calculate average time in each stage
     const stageMetrics: Record<string, { totalDays: number; count: number }> = {};
 
-    stageTransitions.forEach(transition => {
+    stageTransitions.forEach((transition: any) => {
       if (transition.fromStage && transition.durationDays) {
         if (!stageMetrics[transition.fromStage]) {
           stageMetrics[transition.fromStage] = { totalDays: 0, count: 0 };
@@ -598,21 +598,21 @@ class SalesPipelineService {
     });
 
     const totalApprovals = approvals.length;
-    const approved = approvals.filter(a => a.status === 'APPROVED').length;
-    const rejected = approvals.filter(a => a.status === 'REJECTED').length;
-    const pending = approvals.filter(a => a.status === 'PENDING').length;
+    const approved = approvals.filter((a: any) => a.status === 'APPROVED').length;
+    const rejected = approvals.filter((a: any) => a.status === 'REJECTED').length;
+    const pending = approvals.filter((a: any) => a.status === 'PENDING').length;
 
     // Calculate average approval time
     const approvalTimes = approvals
-      .filter(a => a.approvedAt)
-      .map(a => {
+      .filter((a: any) => a.approvedAt)
+      .map((a: any) => {
         const created = new Date(a.createdAt);
         const approved = new Date(a.approvedAt!);
         return (approved.getTime() - created.getTime()) / (1000 * 60 * 60); // hours
       });
 
     const averageApprovalTime = approvalTimes.length > 0
-      ? Math.round(approvalTimes.reduce((a, b) => a + b, 0) / approvalTimes.length)
+      ? Math.round(approvalTimes.reduce((a: any, b: any) => a + b, 0) / approvalTimes.length)
       : 0;
 
     return {

@@ -44,8 +44,17 @@ model User {
   leadAssignments  LeadAssignment[] @relation("AssignedTo")
   opportunities    Opportunity[]    @relation("AccountManager")
   activities       Activity[]
-  tasks            Task[]
   notifications    Notification[]
+  
+  // Task Relations
+  assignedTasks    Task[]           @relation("AssignedTasks")
+  assignedByTasks  Task[]           @relation("AssignedByTasks")
+  completedTasks   Task[]           @relation("CompletedTasks")
+  createdTasks     Task[]           @relation("CreatedTasks")
+  updatedTasks     Task[]           @relation("UpdatedTasks")
+  taskComments     TaskComment[]
+  taskAttachments  TaskAttachment[]
+  taskHistory      TaskHistory[]
   projectsManaged  Project[]        @relation("ProjectManager")
   projectsCoordinated Project[]     @relation("Coordinator")
   projectsOperated Project[]        @relation("Operator")
@@ -61,6 +70,9 @@ model User {
   proposalVersions ProposalVersion[] @relation("ProposalVersionCreator")
   proposalApprovals ProposalApproval[] @relation("ProposalApprovalApprover")
   proposalTemplates ProposalTemplate[] @relation("ProposalTemplateCreator")
+  createdReportTemplates ReportTemplate[] @relation("ReportTemplateCreator")
+  updatedReportTemplates ReportTemplate[] @relation("ReportTemplateUpdater")
+  generatedReports Report[]
   
   @@index([email])
   @@index([departmentId])
@@ -131,6 +143,7 @@ model Company {
   projects         Project[]
   activities       Activity[]
   meetings         Meeting[]
+  tasks            Task[]
   
   @@index([code])
   @@index([businessNumber])
@@ -569,6 +582,10 @@ model Project {
   trainingSessions TrainingSession[]
   meetings         Meeting[]
   tasks            Task[]
+  deliverables     ProjectDeliverable[]
+  risks            ProjectRisk[]
+  budgets          ProjectBudget[]
+  resources        ProjectResource[]
   
   @@index([code])
   @@index([companyId])
@@ -679,13 +696,119 @@ model Milestone {
   description String?
   dueDate     DateTime  @map("due_date")
   completedAt DateTime? @map("completed_at")
+  status      MilestoneStatus @default(PENDING)
+  progress    Int       @default(0)
+  priority    Priority  @default(MEDIUM)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdBy   String?   @map("created_by")
+  updatedBy   String?   @map("updated_by")
+  
+  // Relations
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliverables ProjectDeliverable[]
+  dependencies MilestoneDependency[] @relation("DependentMilestone")
+  dependents   MilestoneDependency[] @relation("PrerequisiteMilestone")
+  
+  @@map("milestones")
+}
+
+model MilestoneDependency {
+  id              String   @id @default(uuid())
+  milestoneId     String   @map("milestone_id")
+  dependsOnId     String   @map("depends_on_id")
+  lagDays         Int      @default(0) @map("lag_days")
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  milestone       Milestone @relation("DependentMilestone", fields: [milestoneId], references: [id], onDelete: Cascade)
+  dependsOn       Milestone @relation("PrerequisiteMilestone", fields: [dependsOnId], references: [id], onDelete: Cascade)
+  
+  @@unique([milestoneId, dependsOnId])
+  @@map("milestone_dependencies")
+}
+
+model ProjectDeliverable {
+  id          String    @id @default(uuid())
+  projectId   String    @map("project_id")
+  milestoneId String?   @map("milestone_id")
+  name        String
+  description String?
+  type        DeliverableType
+  status      DeliverableStatus @default(PENDING)
+  dueDate     DateTime? @map("due_date")
+  deliveredAt DateTime? @map("delivered_at")
+  fileUrl     String?   @map("file_url")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id])
+  
+  @@map("project_deliverables")
+}
+
+model ProjectRisk {
+  id          String    @id @default(uuid())
+  projectId   String    @map("project_id")
+  title       String
+  description String?
+  category    RiskCategory
+  probability RiskLevel
+  impact      RiskLevel
+  score       Int?
+  mitigation  String?
+  owner       String?
+  status      RiskStatus @default(IDENTIFIED)
+  identifiedAt DateTime @default(now()) @map("identified_at")
+  resolvedAt  DateTime? @map("resolved_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   
   // Relations
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   
-  @@map("milestones")
+  @@map("project_risks")
+}
+
+model ProjectBudget {
+  id          String    @id @default(uuid())
+  projectId   String    @map("project_id")
+  category    BudgetCategory
+  description String?
+  plannedAmount Float   @map("planned_amount")
+  actualAmount Float    @default(0) @map("actual_amount")
+  currency    String    @default("KRW")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@map("project_budgets")
+}
+
+model ProjectResource {
+  id          String    @id @default(uuid())
+  projectId   String    @map("project_id")
+  resourceType ResourceType @map("resource_type")
+  name        String
+  description String?
+  quantity    Int       @default(1)
+  unit        String?
+  cost        Float?
+  status      ResourceStatus @default(AVAILABLE)
+  assignedFrom DateTime? @map("assigned_from")
+  assignedTo  DateTime?  @map("assigned_to")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@map("project_resources")
 }
 
 // ============================================
@@ -1029,25 +1152,116 @@ model Activity {
 }
 
 model Task {
-  id            String     @id @default(uuid())
-  title         String
-  description   String?
-  priority      Priority   @default(MEDIUM)
-  status        TaskStatus @default(PENDING)
-  dueDate       DateTime?  @map("due_date")
-  projectId     String?    @map("project_id")
-  opportunityId String?    @map("opportunity_id")
-  assignedToId  String     @map("assigned_to_id")
-  completedAt   DateTime?  @map("completed_at")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  id              String       @id @default(uuid())
+  title           String
+  description     String?
+  priority        Priority     @default(MEDIUM)
+  status          TaskStatus   @default(PENDING)
+  category        TaskCategory @default(GENERAL)
+  dueDate         DateTime?    @map("due_date")
+  startDate       DateTime?    @map("start_date")
+  estimatedHours  Float?       @map("estimated_hours")
+  actualHours     Float?       @map("actual_hours")
+  completionRate  Int          @default(0) @map("completion_rate")
+  projectId       String?      @map("project_id")
+  opportunityId   String?      @map("opportunity_id")
+  companyId       String?      @map("company_id")
+  parentTaskId    String?      @map("parent_task_id")
+  assignedToId    String       @map("assigned_to_id")
+  assignedById    String?      @map("assigned_by_id")
+  completedAt     DateTime?    @map("completed_at")
+  completedById   String?      @map("completed_by_id")
+  
+  // Recurring task fields
+  isRecurring     Boolean      @default(false) @map("is_recurring")
+  recurringType   RecurringType? @map("recurring_type")
+  recurringInterval Int?       @map("recurring_interval")
+  recurringEndDate DateTime?   @map("recurring_end_date")
+  originalTaskId  String?      @map("original_task_id")
+  
+  // Notification fields
+  reminderDate    DateTime?    @map("reminder_date")
+  isReminderSent  Boolean      @default(false) @map("is_reminder_sent")
+  
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  createdBy       String?      @map("created_by")
+  updatedBy       String?      @map("updated_by")
   
   // Relations
-  project       Project?     @relation(fields: [projectId], references: [id])
-  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
-  assignedTo    User         @relation(fields: [assignedToId], references: [id])
+  project         Project?     @relation(fields: [projectId], references: [id])
+  opportunity     Opportunity? @relation(fields: [opportunityId], references: [id])
+  company         Company?     @relation(fields: [companyId], references: [id])
+  assignedTo      User         @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  assignedBy      User?        @relation("AssignedByTasks", fields: [assignedById], references: [id])
+  completedBy     User?        @relation("CompletedTasks", fields: [completedById], references: [id])
+  createdByUser   User?        @relation("CreatedTasks", fields: [createdBy], references: [id])
+  updatedByUser   User?        @relation("UpdatedTasks", fields: [updatedBy], references: [id])
   
+  parentTask      Task?        @relation("TaskHierarchy", fields: [parentTaskId], references: [id])
+  subtasks        Task[]       @relation("TaskHierarchy")
+  originalTask    Task?        @relation("RecurringTasks", fields: [originalTaskId], references: [id])
+  recurringTasks  Task[]       @relation("RecurringTasks")
+  
+  comments        TaskComment[]
+  attachments     TaskAttachment[]
+  taskHistory     TaskHistory[]
+  
+  @@index([assignedToId, status])
+  @@index([projectId])
+  @@index([opportunityId])
+  @@index([companyId])
+  @@index([dueDate])
   @@map("tasks")
+}
+
+model TaskComment {
+  id          String    @id @default(uuid())
+  taskId      String    @map("task_id")
+  userId      String    @map("user_id")
+  comment     String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id])
+  
+  @@map("task_comments")
+}
+
+model TaskAttachment {
+  id          String    @id @default(uuid())
+  taskId      String    @map("task_id")
+  fileName    String    @map("file_name")
+  fileUrl     String    @map("file_url")
+  fileSize    Int       @map("file_size")
+  mimeType    String    @map("mime_type")
+  uploadedBy  String    @map("uploaded_by")
+  uploadedAt  DateTime  @default(now()) @map("uploaded_at")
+  
+  // Relations
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [uploadedBy], references: [id])
+  
+  @@map("task_attachments")
+}
+
+model TaskHistory {
+  id          String    @id @default(uuid())
+  taskId      String    @map("task_id")
+  userId      String    @map("user_id")
+  action      String
+  fieldName   String?   @map("field_name")
+  oldValue    String?   @map("old_value")
+  newValue    String?   @map("new_value")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id])
+  
+  @@map("task_history")
 }
 
 model Document {
@@ -1080,6 +1294,86 @@ model Notification {
   
   @@index([userId, isRead])
   @@map("notifications")
+}
+
+// Report Templates
+model ReportTemplate {
+  id            String          @id @default(uuid())
+  code          String          @unique
+  name          String
+  description   String?
+  type          ReportType
+  format        ReportFormat    @default(PDF)
+  frequency     ReportFrequency @default(ON_DEMAND)
+  
+  // Template Configuration
+  config        Json            // Report configuration (filters, columns, etc.)
+  layout        Json?           // Layout configuration
+  styles        Json?           // Style configuration
+  
+  // Scheduling
+  isScheduled   Boolean         @default(false) @map("is_scheduled")
+  scheduleConfig Json?          @map("schedule_config") // Cron expression, recipients, etc.
+  lastGeneratedAt DateTime?     @map("last_generated_at")
+  nextGenerateAt DateTime?      @map("next_generate_at")
+  
+  // Metadata
+  isActive      Boolean         @default(true) @map("is_active")
+  version       Int             @default(1)
+  createdBy     String          @map("created_by")
+  updatedBy     String?         @map("updated_by")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  
+  // Relations
+  creator       User            @relation("ReportTemplateCreator", fields: [createdBy], references: [id])
+  updater       User?           @relation("ReportTemplateUpdater", fields: [updatedBy], references: [id])
+  reports       Report[]
+  
+  @@index([type])
+  @@index([isActive])
+  @@map("report_templates")
+}
+
+model Report {
+  id            String          @id @default(uuid())
+  templateId    String?         @map("template_id")
+  name          String
+  type          ReportType
+  format        ReportFormat
+  
+  // Report Data
+  parameters    Json?           // Parameters used to generate report
+  data          Json            // Report data/content
+  fileUrl       String?         @map("file_url") // URL if file was generated
+  fileSize      Int?            @map("file_size")
+  
+  // Status
+  status        ReportStatus    @default(PENDING)
+  errorMessage  String?         @map("error_message")
+  
+  // Metadata
+  generatedBy   String          @map("generated_by")
+  generatedAt   DateTime        @default(now()) @map("generated_at")
+  expiresAt     DateTime?       @map("expires_at")
+  
+  // Relations
+  template      ReportTemplate? @relation(fields: [templateId], references: [id])
+  generator     User           @relation(fields: [generatedBy], references: [id])
+  
+  @@index([templateId])
+  @@index([type])
+  @@index([status])
+  @@index([generatedBy])
+  @@map("reports")
+}
+
+enum ReportStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
+  EXPIRED
 }
 
 // ============================================
@@ -1307,6 +1601,30 @@ enum TaskStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+  ON_HOLD
+  OVERDUE
+}
+
+enum TaskCategory {
+  GENERAL
+  MEETING
+  CALL
+  EMAIL
+  FOLLOW_UP
+  PROPOSAL
+  CONTRACT
+  TRAINING
+  SUPPORT
+  ADMINISTRATIVE
+}
+
+enum RecurringType {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
 }
 
 enum DocumentType {
@@ -1364,6 +1682,87 @@ enum EntityType {
   OPPORTUNITY
 }
 
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  DELAYED
+  CANCELLED
+}
+
+enum DeliverableType {
+  REPORT
+  PRESENTATION
+  TRAINING_MATERIAL
+  ASSESSMENT
+  CERTIFICATE
+  CONTRACT
+  OTHER
+}
+
+enum DeliverableStatus {
+  PENDING
+  IN_PROGRESS
+  SUBMITTED
+  APPROVED
+  REJECTED
+  DELIVERED
+}
+
+enum RiskCategory {
+  SCHEDULE
+  BUDGET
+  RESOURCE
+  TECHNICAL
+  QUALITY
+  EXTERNAL
+  ORGANIZATIONAL
+}
+
+enum RiskLevel {
+  VERY_LOW
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+enum RiskStatus {
+  IDENTIFIED
+  ANALYZING
+  MITIGATING
+  RESOLVED
+  ACCEPTED
+}
+
+enum BudgetCategory {
+  LABOR
+  MATERIAL
+  EQUIPMENT
+  TRAVEL
+  VENUE
+  CATERING
+  MARKETING
+  OTHER
+}
+
+enum ResourceType {
+  HUMAN
+  EQUIPMENT
+  FACILITY
+  MATERIAL
+  SOFTWARE
+  OTHER
+}
+
+enum ResourceStatus {
+  AVAILABLE
+  ALLOCATED
+  IN_USE
+  MAINTENANCE
+  UNAVAILABLE
+}
+
 enum ProposalStatus {
   DRAFT
   PENDING_APPROVAL
@@ -1389,4 +1788,32 @@ enum ProposalApprovalStatus {
   APPROVED
   REJECTED
   CANCELLED
+}
+
+// Report Template Enums
+enum ReportType {
+  SALES_REPORT
+  PROJECT_STATUS
+  CUSTOMER_ANALYSIS
+  FINANCIAL_SUMMARY
+  TEAM_PERFORMANCE
+  EXECUTIVE_SUMMARY
+  CUSTOM
+}
+
+enum ReportFormat {
+  PDF
+  EXCEL
+  CSV
+  HTML
+  JSON
+}
+
+enum ReportFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  ON_DEMAND
 }

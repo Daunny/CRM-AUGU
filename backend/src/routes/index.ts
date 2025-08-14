@@ -1,5 +1,10 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
+import dashboardRoutes from './dashboard.routes';
+import reportRoutes from './report.routes';
+import notificationRoutes from './notification.routes';
+import fileRoutes from './file.routes';
+import emailRoutes from './email.routes';
 // import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -36,6 +41,21 @@ router.get('/', (_req, res) => {
 
 // Auth routes - mixed (some public, some protected)
 router.use('/auth', authRoutes);
+
+// Dashboard routes (protected)
+router.use('/dashboard', dashboardRoutes);
+
+// Report routes (protected)
+router.use('/reports', reportRoutes);
+
+// Notification routes (protected)
+router.use('/notifications', notificationRoutes);
+
+// File routes (mixed - some public, some protected)
+router.use('/files', fileRoutes);
+
+// Email routes (protected)
+router.use('/email', emailRoutes);
 
 // All routes below require authentication
 // router.use(authenticate);

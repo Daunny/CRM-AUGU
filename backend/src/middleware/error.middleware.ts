@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError } from '../types';
+import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 
 /**
@@ -25,6 +25,7 @@ export const errorHandler = (
     res.status(err.statusCode).json({
       success: false,
       error: err.message,
+      ...(err.errors && { errors: err.errors }),
       ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
     });
     return;

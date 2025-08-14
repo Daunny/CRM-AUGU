@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { JWTPayload, TokenPair, DecodedToken } from '../types/auth.types';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-in-production';
@@ -11,18 +11,20 @@ export class JWTUtils {
    * Generate access token
    */
   static generateAccessToken(payload: JWTPayload): string {
-    return jwt.sign(payload, JWT_SECRET, {
+    const signOptions: any = {
       expiresIn: JWT_ACCESS_TOKEN_EXPIRES_IN
-    });
+    };
+    return jwt.sign(payload as object, JWT_SECRET, signOptions);
   }
 
   /**
    * Generate refresh token
    */
   static generateRefreshToken(payload: JWTPayload): string {
-    return jwt.sign(payload, JWT_REFRESH_SECRET, {
+    const signOptions: any = {
       expiresIn: JWT_REFRESH_TOKEN_EXPIRES_IN
-    });
+    };
+    return jwt.sign(payload as object, JWT_REFRESH_SECRET, signOptions);
   }
 
   /**
@@ -124,3 +126,8 @@ export class JWTUtils {
     }
   }
 }
+
+// Export convenience function for socket.ts compatibility
+export const verifyToken = (token: string): DecodedToken => {
+  return JWTUtils.verifyAccessToken(token);
+};

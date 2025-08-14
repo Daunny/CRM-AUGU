@@ -1,0 +1,42 @@
+<h2>새로운 태스크가 할당되었습니다</h2>
+
+<p>안녕하세요 {{assigneeName}}님,</p>
+
+<p>{{assignerName}}님이 새로운 태스크를 할당했습니다.</p>
+
+<table class="info-table">
+    <tr>
+        <th>태스크 제목</th>
+        <td>{{taskTitle}}</td>
+    </tr>
+    <tr>
+        <th>우선순위</th>
+        <td>{{priority}}</td>
+    </tr>
+    <tr>
+        <th>마감일</th>
+        <td>{{dueDate}}</td>
+    </tr>
+    {{#if projectName}}
+    <tr>
+        <th>프로젝트</th>
+        <td>{{projectName}}</td>
+    </tr>
+    {{/if}}
+</table>
+
+{{#if description}}
+<div class="highlight">
+    <strong>설명:</strong><br>
+    {{description}}
+</div>
+{{/if}}
+
+<div style="text-align: center;">
+    <a href="{{taskUrl}}" class="button">태스크 확인하기</a>
+</div>
+
+<p>질문이 있으시면 {{assignerName}}님에게 직접 문의해 주세요.</p>
+
+<p>감사합니다,<br>
+CRM AUGU 팀</p>

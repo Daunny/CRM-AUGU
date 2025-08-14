@@ -1,0 +1,52 @@
+<h2>제안서 {{#if isApproved}}승인{{else}}거절{{/if}} 알림</h2>
+
+<p>안녕하세요 {{userName}}님,</p>
+
+<p>귀하의 제안서 <strong>{{proposalCode}}</strong>가 {{#if isApproved}}승인{{else}}거절{{/if}}되었습니다.</p>
+
+<table class="info-table">
+    <tr>
+        <th>제안서 코드</th>
+        <td>{{proposalCode}}</td>
+    </tr>
+    <tr>
+        <th>제목</th>
+        <td>{{proposalTitle}}</td>
+    </tr>
+    <tr>
+        <th>고객사</th>
+        <td>{{companyName}}</td>
+    </tr>
+    <tr>
+        <th>금액</th>
+        <td>{{amount}}</td>
+    </tr>
+    <tr>
+        <th>{{#if isApproved}}승인자{{else}}거절자{{/if}}</th>
+        <td>{{reviewerName}}</td>
+    </tr>
+    <tr>
+        <th>처리 일시</th>
+        <td>{{processedAt}}</td>
+    </tr>
+</table>
+
+{{#if comments}}
+<div class="highlight">
+    <strong>{{#if isApproved}}승인 의견:{{else}}거절 사유:{{/if}}</strong><br>
+    {{comments}}
+</div>
+{{/if}}
+
+{{#if isApproved}}
+<p>이제 고객에게 제안서를 발송할 수 있습니다.</p>
+{{else}}
+<p>피드백을 반영하여 제안서를 수정한 후 다시 제출해 주세요.</p>
+{{/if}}
+
+<div style="text-align: center;">
+    <a href="{{proposalUrl}}" class="button">제안서 확인하기</a>
+</div>
+
+<p>감사합니다,<br>
+CRM AUGU 팀</p>

@@ -1,11 +1,13 @@
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly isOperational: boolean;
+  public readonly errors?: any[];
 
-  constructor(message: string, statusCode: number, isOperational = true) {
+  constructor(message: string, statusCode: number, isOperational = true, errors?: any[]) {
     super(message);
     this.statusCode = statusCode;
     this.isOperational = isOperational;
+    this.errors = errors;
 
     Error.captureStackTrace(this, this.constructor);
   }
@@ -14,6 +16,12 @@ export class AppError extends Error {
 export class ValidationError extends AppError {
   constructor(message: string) {
     super(message, 400, true);
+  }
+}
+
+export class BadRequestError extends AppError {
+  constructor(message: string, errors?: any[]) {
+    super(message, 400, true, errors);
   }
 }
 

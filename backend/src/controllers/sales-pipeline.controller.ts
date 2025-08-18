@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { salesPipelineService } from '../services/sales-pipeline.service';
+import logger from '../utils/logger';
+import { AppError } from '../utils/errors';
 
-// Get pipeline metrics
+// Get pipeline metrics with enhanced error handling
 export const getPipelineMetrics = async (
   req: Request,
   res: Response,
@@ -16,13 +18,19 @@ export const getPipelineMetrics = async (
       dateTo,
     } = req.query;
 
+    // Validated data from middleware
     const filter = {
-      salesTeamId: salesTeamId as string,
-      accountManagerId: accountManagerId as string,
-      companyId: companyId as string,
-      dateFrom: dateFrom as string,
-      dateTo: dateTo as string,
+      salesTeamId: salesTeamId as string | undefined,
+      accountManagerId: accountManagerId as string | undefined,
+      companyId: companyId as string | undefined,
+      dateFrom: dateFrom as string | undefined,
+      dateTo: dateTo as string | undefined,
     };
+
+    logger.info('Fetching pipeline metrics', { 
+      userId: req.user?.id, 
+      filter 
+    });
 
     const metrics = await salesPipelineService.getPipelineMetrics(filter);
 
@@ -31,14 +39,25 @@ export const getPipelineMetrics = async (
       data: metrics,
       meta: {
         timestamp: new Date().toISOString(),
+        requestId: req.id,
       },
     });
   } catch (error) {
-    next(error);
+    logger.error('Failed to fetch pipeline metrics', { 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      userId: req.user?.id,
+      query: req.query 
+    });
+    
+    if (error instanceof AppError) {
+      next(error);
+    } else {
+      next(new AppError('Failed to fetch pipeline metrics', 500));
+    }
   }
 };
 
-// Get proposal analytics
+// Get proposal analytics with proper validation
 export const getProposalAnalytics = async (
   req: Request,
   res: Response,
@@ -56,16 +75,22 @@ export const getProposalAnalytics = async (
       dateTo,
     } = req.query;
 
+    // Data has been validated by middleware
     const filter = {
-      salesTeamId: salesTeamId as string,
-      accountManagerId: accountManagerId as string,
-      companyId: companyId as string,
-      templateId: templateId as string,
-      minAmount: minAmount ? parseFloat(minAmount as string) : undefined,
-      maxAmount: maxAmount ? parseFloat(maxAmount as string) : undefined,
-      dateFrom: dateFrom as string,
-      dateTo: dateTo as string,
+      salesTeamId: salesTeamId as string | undefined,
+      accountManagerId: accountManagerId as string | undefined,
+      companyId: companyId as string | undefined,
+      templateId: templateId as string | undefined,
+      minAmount: minAmount ? Number(minAmount) : undefined,
+      maxAmount: maxAmount ? Number(maxAmount) : undefined,
+      dateFrom: dateFrom as string | undefined,
+      dateTo: dateTo as string | undefined,
     };
+
+    logger.info('Fetching proposal analytics', { 
+      userId: req.user?.id, 
+      filter 
+    });
 
     const analytics = await salesPipelineService.getProposalAnalytics(filter);
 
@@ -74,10 +99,21 @@ export const getProposalAnalytics = async (
       data: analytics,
       meta: {
         timestamp: new Date().toISOString(),
+        requestId: req.id,
       },
     });
   } catch (error) {
-    next(error);
+    logger.error('Failed to fetch proposal analytics', { 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      userId: req.user?.id,
+      query: req.query 
+    });
+    
+    if (error instanceof AppError) {
+      next(error);
+    } else {
+      next(new AppError('Failed to fetch proposal analytics', 500));
+    }
   }
 };
 

@@ -5,29 +5,25 @@ import morgan from 'morgan';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
-import { config } from './config/env';
+import swaggerUi from 'swagger-ui-express';
+import { config, isDevelopment } from './config/env';
+import { corsOptions, devCorsOptions } from './config/cors';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
+import { swaggerSpec } from './config/swagger';
 
 // Import routes
-import authRoutes from './routes/auth.routes';
-import companyRoutes from './routes/company.routes';
-import leadRoutes from './routes/lead.routes';
-import opportunityRoutes from './routes/opportunity.routes';
-import proposalRoutes from './routes/proposal.routes';
-import salesPipelineRoutes from './routes/sales-pipeline.routes';
-import taskRoutes from './routes/task.routes';
-// import projectRoutes from './routes/project.routes';
-// import meetingRoutes from './routes/meeting.routes';
-// import kpiRoutes from './routes/kpi.routes';
+import routes from './routes';
 
 const app: Application = express();
 
-// Basic middleware
-app.use(helmet());
-app.use(cors({
-  origin: config.cors.origin,
-  credentials: true,
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: isDevelopment ? false : undefined,
+  crossOriginEmbedderPolicy: !isDevelopment,
 }));
+
+// CORS configuration
+app.use(cors(isDevelopment ? devCorsOptions : corsOptions));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -76,17 +72,20 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// Swagger documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'CRM AUGU API Documentation',
+}));
+
+// Serve Swagger JSON spec
+app.get('/api-docs.json', (_req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+
 // API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/companies', companyRoutes);
-app.use('/api/leads', leadRoutes);
-app.use('/api/opportunities', opportunityRoutes);
-app.use('/api/proposals', proposalRoutes);
-app.use('/api/sales-pipeline', salesPipelineRoutes);
-app.use('/api/tasks', taskRoutes);
-// app.use('/api/projects', projectRoutes);
-// app.use('/api/meetings', meetingRoutes);
-// app.use('/api/kpi', kpiRoutes);
+app.use('/api', routes);
 
 // Error handling
 app.use(notFoundHandler);
